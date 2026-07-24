@@ -68,6 +68,7 @@ SEARCH_NAME="srgsib-search"
 ADLS_NAME="caasadlsv2"
 SYNAPSE_NAME="caassynapse"
 SYNAPSE_SQLPOOL="caasedms"
+SYNAPSE_SCHEMA="dbo"        # schema hosting the vw_SafetyIntel_* views (e.g. dbo or gold)
 
 # --- new app environment ---
 LOCATION="southeastasia"
@@ -273,6 +274,7 @@ az containerapp create \
     SEARCH_INDEX="safety-docs" \
     SYNAPSE_SQL_SERVER="${SYNAPSE_NAME}.sql.azuresynapse.net" \
     SYNAPSE_SQL_DATABASE="${SYNAPSE_SQLPOOL}" \
+    SYNAPSE_SQL_SCHEMA="${SYNAPSE_SCHEMA}" \
     ADLS_ACCOUNT="$ADLS_NAME" \
     ADLS_DOCS_FILESYSTEM="docs"
 
@@ -335,6 +337,73 @@ EXEC sp_addrolemember 'db_datareader', 'srgsib-app';
 
 > `[srgsib-app]` is the Container App's name (its managed identity). Adjust if you
 > renamed `APP_NAME`.
+
+### Scope the grant to a schema (least privilege)
+
+`db_datareader` grants `SELECT` on **every** table/view in the database. To follow
+least privilege, drop the role membership and grant `SELECT` only on the schema
+that holds the SafetyIntel objects. All tables and views in this repo are created
+in the **`dbo`** schema (e.g. `dbo.DM_TBL_SRG_*`, `dbo.vw_SafetyIntel_*`), so:
+
+```sql
+CREATE USER [srgsib-app] FROM EXTERNAL PROVIDER;
+
+-- Schema-scoped read access (covers all current + future objects in the schema)
+GRANT SELECT ON SCHEMA::dbo TO [srgsib-app];
+
+-- If nl2sql calls any stored procedures/functions, also grant EXECUTE on the schema
+GRANT EXECUTE ON SCHEMA::dbo TO [srgsib-app];
+```
+
+> A schema-level `GRANT SELECT`/`GRANT EXECUTE` automatically applies to objects
+> added to that schema later, so you don't re-run it when new views ship. If you
+> later split objects into a dedicated schema (e.g. `safetyintel`), create that
+> schema and repeat the grant against `SCHEMA::safetyintel` instead.
+
+If you already ran `sp_addrolemember 'db_datareader', ...` and want to tighten it,
+revoke the broad role first, then apply the schema grant:
+
+```sql
+EXEC sp_droprolemember 'db_datareader', 'srgsib-app';
+GRANT SELECT ON SCHEMA::dbo TO [srgsib-app];
+```
+
+To grant only specific tables/views instead of the whole schema, name each object:
+
+```sql
+GRANT SELECT ON OBJECT::dbo.vw_SafetyIntel_AMO TO [srgsib-app];
+GRANT SELECT ON OBJECT::dbo.vw_SafetyIntel_Occurrences TO [srgsib-app];
+-- ...repeat per view the agent is allowed to read
+```
+
+Verify what the user can actually see:
+
+```sql
+-- Effective permissions for the managed-identity user
+SELECT * FROM sys.database_permissions dp
+JOIN sys.database_principals pr ON dp.grantee_principal_id = pr.principal_id
+WHERE pr.name = 'srgsib-app';
+```
+
+### Non-`dbo` schema (e.g. `gold`)
+
+If the SafetyIntel tables/views live in a schema other than `dbo`, set the app's
+`SYNAPSE_SQL_SCHEMA` env var to that schema (Step 1 / Step 7). The `nl2sql` tool
+then rewrites every `vw_SafetyIntel_*` reference to `<schema>.vw_SafetyIntel_*`
+before executing, so queries resolve regardless of the user's default schema.
+
+Grant against that schema and (optionally) set it as the user's default:
+
+```sql
+CREATE USER [srgsib-app] FROM EXTERNAL PROVIDER;
+GRANT SELECT  ON SCHEMA::gold TO [srgsib-app];
+GRANT EXECUTE ON SCHEMA::gold TO [srgsib-app];   -- only if nl2sql calls procs
+ALTER USER [srgsib-app] WITH DEFAULT_SCHEMA = gold;  -- optional; queries are already schema-qualified
+```
+
+> To move existing `dbo` objects into `gold`, use the migration script
+> [SQL/migrate_dbo_to_gold.sql](../SQL/migrate_dbo_to_gold.sql), then create the
+> gold views with [SQL/vw_SafetyIntel_Views_Gold.sql](../SQL/vw_SafetyIntel_Views_Gold.sql).
 
 ---
 

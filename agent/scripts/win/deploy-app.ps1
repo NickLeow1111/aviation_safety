@@ -50,6 +50,7 @@ param(
     [string]$AdlsName         = "caasadlsv2",
     [string]$SynapseName      = "caassynapse",
     [string]$SynapseSqlPool   = "caasedms",
+    [string]$SynapseSchema    = "dbo",
 
     # --- existing app environment ---
     [string]$AppRg            = "CAAS-APP",
@@ -169,6 +170,7 @@ $envVars = @(
     "SEARCH_INDEX=$SearchIndex",
     "SYNAPSE_SQL_SERVER=$SynapseName.sql.azuresynapse.net",
     "SYNAPSE_SQL_DATABASE=$SynapseSqlPool",
+    "SYNAPSE_SQL_SCHEMA=$SynapseSchema",
     "ADLS_ACCOUNT=$AdlsName",
     "ADLS_DOCS_FILESYSTEM=docs",
     "FOUNDRY_AGENT_NAME=$AgentName"

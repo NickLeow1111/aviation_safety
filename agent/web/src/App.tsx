@@ -219,6 +219,10 @@ export default function App() {
   const highlights = useMemo(() => extractHighlights(latestNarrative, charts), [latestNarrative, charts]);
   const workspaceMode = useMemo(() => inferWorkspaceMode(latestUserPrompt, charts), [latestUserPrompt, charts]);
 
+  // Keep the right-hand workspace blank until the analyst starts a conversation,
+  // so first launch shows only the assistant chat on the left.
+  const hasStarted = messages.length > 0 || charts.length > 0;
+
   return (
     <div className="app-shell">
       <Chat
@@ -232,83 +236,87 @@ export default function App() {
       />
 
       <main className="workspace">
-        <header className="workspace-header">
-          <div>
-            <span className="workspace-kicker">Aviation Safety Risk Dashboard</span>
-            <h1>Aviation Safety Intelligence</h1>
-            <p>
-              A cleaner analyst workspace for chaining Synapse-backed questions into a single
-              operational picture.
-            </p>
-          </div>
+        {hasStarted && (
+          <>
+            <header className="workspace-header">
+              <div>
+                <span className="workspace-kicker">Aviation Safety Risk Dashboard</span>
+                <h1>Aviation Safety Intelligence</h1>
+                <p>
+                  A cleaner analyst workspace for chaining Synapse-backed questions into a single
+                  operational picture.
+                </p>
+              </div>
 
-          <div className="workspace-controls">
-            <span className={`status-pill ${ready === "ready" ? "ok" : ready === "error" ? "err" : ""}`}>
-              {ready === "checking" ? "Link check" : ready === "ready" ? readyMsg : readyMsg || "Unavailable"}
-            </span>
-            <div className="mode-pills" aria-hidden="true">
-              <span className={workspaceMode === "repository" ? "active" : ""}>Repository</span>
-              <span className={workspaceMode === "occurrences" ? "active" : ""}>Occurrences</span>
-              <span className={workspaceMode === "aircraft" ? "active" : ""}>Aircraft 360</span>
-            </div>
-          </div>
-        </header>
+              <div className="workspace-controls">
+                <span className={`status-pill ${ready === "ready" ? "ok" : ready === "error" ? "err" : ""}`}>
+                  {ready === "checking" ? "Link check" : ready === "ready" ? readyMsg : readyMsg || "Unavailable"}
+                </span>
+                <div className="mode-pills" aria-hidden="true">
+                  <span className={workspaceMode === "repository" ? "active" : ""}>Repository</span>
+                  <span className={workspaceMode === "occurrences" ? "active" : ""}>Occurrences</span>
+                  <span className={workspaceMode === "aircraft" ? "active" : ""}>Aircraft 360</span>
+                </div>
+              </div>
+            </header>
 
-        <section className="hero-banner">
-          <div className="hero-copy">
-            <span className="eyebrow">Live brief</span>
-            <h2>{latestUserPrompt}</h2>
-            <p>
-              The workspace now prioritises a single spotlight visualization, a compact
-              intelligence rail, and a lower analytics deck so follow-up questions feel cumulative
-              instead of stacked like chat logs.
-            </p>
-          </div>
+            <section className="hero-banner">
+              <div className="hero-copy">
+                <span className="eyebrow">Live brief</span>
+                <h2>{latestUserPrompt}</h2>
+                <p>
+                  The workspace now prioritises a single spotlight visualization, a compact
+                  intelligence rail, and a lower analytics deck so follow-up questions feel cumulative
+                  instead of stacked like chat logs.
+                </p>
+              </div>
 
-          <div className="hero-cards">
-            <div className="hero-note">
-              <span>Mission profile</span>
-              <strong>{charts.length > 0 ? "Multi-panel analysis" : "Waiting for first analysis"}</strong>
-              <small>{busy ? "Agent is assembling the next view." : "Ask for a dashboard or a focused drill-down."}</small>
-            </div>
-            <div className="hero-note accent">
-              <span>Recent outputs</span>
-              <strong>{recentTitles[0] ?? "No visuals yet"}</strong>
-              <small>{recentTitles[1] ?? "Only the current prompt's artifacts stay on the canvas."}</small>
-            </div>
-          </div>
-        </section>
+              <div className="hero-cards">
+                <div className="hero-note">
+                  <span>Mission profile</span>
+                  <strong>{charts.length > 0 ? "Multi-panel analysis" : "Waiting for first analysis"}</strong>
+                  <small>{busy ? "Agent is assembling the next view." : "Ask for a dashboard or a focused drill-down."}</small>
+                </div>
+                <div className="hero-note accent">
+                  <span>Recent outputs</span>
+                  <strong>{recentTitles[0] ?? "No visuals yet"}</strong>
+                  <small>{recentTitles[1] ?? "Only the current prompt's artifacts stay on the canvas."}</small>
+                </div>
+              </div>
+            </section>
 
-        <section className="stats-strip">
-          <StatCard
-            label="Visuals"
-            value={String(charts.length).padStart(2, "0")}
-            detail={`${chartCount} charts · ${tableCount} tables`}
-          />
-          <StatCard
-            label="Records in view"
-            value={String(recordCount).padStart(2, "0")}
-            detail="Estimated from rendered artifacts"
-          />
-          <StatCard
-            label="Tool activity"
-            value={String(traces.length).padStart(2, "0")}
-            detail={busy ? "Current run in progress" : "Function calls for this prompt"}
-          />
-          <StatCard
-            label="Assistant memo"
-            value={highlights.length > 0 ? String(highlights.length).padStart(2, "0") : "00"}
-            detail="Key takeaways pinned to the right rail"
-          />
-        </section>
+            <section className="stats-strip">
+              <StatCard
+                label="Visuals"
+                value={String(charts.length).padStart(2, "0")}
+                detail={`${chartCount} charts · ${tableCount} tables`}
+              />
+              <StatCard
+                label="Records in view"
+                value={String(recordCount).padStart(2, "0")}
+                detail="Estimated from rendered artifacts"
+              />
+              <StatCard
+                label="Tool activity"
+                value={String(traces.length).padStart(2, "0")}
+                detail={busy ? "Current run in progress" : "Function calls for this prompt"}
+              />
+              <StatCard
+                label="Assistant memo"
+                value={highlights.length > 0 ? String(highlights.length).padStart(2, "0") : "00"}
+                detail="Key takeaways pinned to the right rail"
+              />
+            </section>
 
-        <Canvas
-          charts={charts}
-          traces={traces}
-          summaryText={latestNarrative}
-          lastPrompt={latestUserPrompt}
-          highlights={highlights}
-        />
+            <Canvas
+              charts={charts}
+              traces={traces}
+              summaryText={latestNarrative}
+              lastPrompt={latestUserPrompt}
+              highlights={highlights}
+            />
+          </>
+        )}
       </main>
     </div>
   );

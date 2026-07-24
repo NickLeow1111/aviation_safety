@@ -25,11 +25,38 @@ _FORBIDDEN_RE = re.compile(
     re.IGNORECASE,
 )
 _SELECT_RE = re.compile(r"^\s*(with\b.+?\bselect\b|select\b)", re.IGNORECASE | re.DOTALL)
-_VIEW_REF_RE = re.compile(r"\b(?:dbo\.)?(vw_safetyintel_[a-z_]+)", re.IGNORECASE)
+_VIEW_REF_RE = re.compile(r"\b(?:[a-z_][a-z0-9_]*\.)?(vw_safetyintel_[a-z_]+)", re.IGNORECASE)
+
+# Matches a vw_SafetyIntel_* reference with an optional (possibly bracketed)
+# schema prefix, so we can rewrite it to the configured target schema.
+_VIEW_QUALIFY_RE = re.compile(
+    r"(?<![\w.])"                                       # not mid-identifier
+    r"(?:\[?[a-z_][a-z0-9_]*\]?\s*\.\s*)?"               # optional schema.
+    r"\[?(vw_safetyintel_[a-z0-9_]+)\]?",               # the view name
+    re.IGNORECASE,
+)
+_SCHEMA_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class SqlSafetyError(ValueError):
     """Raised when generated SQL violates the read-only allow-list."""
+
+
+def _target_schema() -> str:
+    """Schema that hosts the vw_SafetyIntel_* views (SYNAPSE_SQL_SCHEMA, default dbo).
+
+    Configurable so the same image can target `dbo` or a customer schema such as
+    `gold` without code changes.
+    """
+    schema = os.environ.get("SYNAPSE_SQL_SCHEMA", "dbo").strip()
+    if not _SCHEMA_NAME_RE.match(schema):
+        raise SqlSafetyError(f"Invalid SYNAPSE_SQL_SCHEMA value: {schema!r}")
+    return schema
+
+
+def _apply_schema(sql: str, schema: str) -> str:
+    """Normalise every vw_SafetyIntel_* reference to the target schema."""
+    return _VIEW_QUALIFY_RE.sub(lambda m: f"{schema}.{m.group(1)}", sql)
 
 
 def _validate_sql(sql: str) -> None:
@@ -81,6 +108,7 @@ def run_nl2sql(sql: str, max_rows: int = 200) -> dict[str, Any]:
         {"columns": [...], "rows": [...], "row_count": n, "sql": <validated>}
     """
     _validate_sql(sql)
+    sql = _apply_schema(sql, _target_schema())
     with _build_connection() as conn, conn.cursor() as cur:
         cur.execute(sql)
         columns = [d[0] for d in cur.description] if cur.description else []
