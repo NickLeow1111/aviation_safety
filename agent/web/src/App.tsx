@@ -9,6 +9,7 @@ type ReadyState = "checking" | "ready" | "error";
 const STARTER_PROMPTS = [
   "Show me the runway incursion dashboard",
   "Analyze recent bird strike",
+  "Audit aircraft maintenance organisation",
   "Build me a 2024 safety intelligence dashboard",
 ];
 

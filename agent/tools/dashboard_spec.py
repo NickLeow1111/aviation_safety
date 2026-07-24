@@ -98,6 +98,8 @@ def _infer_domain(title: str | None, focus: str | None, datasets: list[dict[str,
         return "bird_strike"
     if "runway" in haystack or "incursion" in haystack:
         return "runway_incursion"
+    if "amo" in haystack or "audit" in haystack or "maintenance" in haystack:
+        return "amo_audit"
     return "occurrence_ops"
 
 
@@ -106,6 +108,8 @@ def _default_title(domain: str) -> str:
         return "Bird Strike Operations Dashboard"
     if domain == "runway_incursion":
         return "Runway Incursion Operations Dashboard"
+    if domain == "amo_audit":
+        return "AMO Quality Audit Dashboard"
     return "Occurrence Operations Dashboard"
 
 
