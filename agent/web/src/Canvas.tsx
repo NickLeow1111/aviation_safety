@@ -310,15 +310,6 @@ function OpsDashboardCard({ spec, variant }: { spec: OpsDashboardSpec; variant: 
 }
 
 function AmoAuditPanel({ spec }: { spec: OpsDashboardSpec }) {
-  const findings = spec.tracks.map((track) => ({
-    id: track.track_id,
-    callsign: track.callsign,
-    tail_id: track.tail_id,
-    flight_level: track.flight_level,
-    speed_kts: track.speed_kts,
-    risk_score: track.risk_score,
-  }));
-
   return (
     <div className="ops-stage">
       <div className="amo-findings-panel">
