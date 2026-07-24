@@ -99,6 +99,90 @@ BIRD_SUBTYPES = [
     {"Occurrence_Subtype": "Lower fuselage", "Bird_Strike_Count": 2},
 ]
 
+# ---------------------------------------------------------------------------
+# AMO Audit mock data
+# ---------------------------------------------------------------------------
+
+AMO_OVERVIEW = [{
+    "Organisation": "SIA Engineering Company Line Maintenance (WSSS)",
+    "Audit_Type": "Scheduled Quality Assurance Audit",
+    "Audit_Period": "2026 Q2",
+    "Total_Findings": 12,
+    "Critical_Findings": 1,
+    "High_Findings": 3,
+    "Medium_Findings": 5,
+    "Low_Findings": 2,
+    "Observations": 1,
+    "Open_Findings": 2,
+    "In_Progress_Findings": 4,
+    "Closed_Findings": 6,
+    "Audit_Scope": "Line maintenance records, tool control, technician certifications, parts traceability",
+}]
+
+AMO_FINDINGS = [
+    {"Finding_ID": "AMO-2026-001", "Department": "Avionics Workshop", "Finding_Description": "Two calibrated torque wrenches found past their 90-day recertification due date.", "Severity": "High", "Status": "Open", "Due_Date": "2026-08-15", "Responsible_Party": "Avionics Supervisor", "Risk_Score": 72},
+    {"Finding_ID": "AMO-2026-002", "Department": "Engine Test Cell", "Finding_Description": "Fire suppression system hydrostatic test certificate expired 14 days ago.", "Severity": "Critical", "Status": "In Progress", "Due_Date": "2026-07-30", "Responsible_Party": "Facility Manager", "Risk_Score": 92},
+    {"Finding_ID": "AMO-2026-003", "Department": "Parts Warehouse", "Finding_Description": "Three unserviceable components (P/N 68A-4520-12) not segregated from serviceable stock.", "Severity": "High", "Status": "In Progress", "Due_Date": "2026-08-01", "Responsible_Party": "Stores Supervisor", "Risk_Score": 68},
+    {"Finding_ID": "AMO-2026-004", "Department": "Line Maintenance", "Finding_Description": "Technician logbook entry for 9V-SMU night check missing sign-off on task card CA-4412-B.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-07-10", "Responsible_Party": "Shift Lead", "Risk_Score": 45},
+    {"Finding_ID": "AMO-2026-005", "Department": "Avionics Workshop", "Finding_Description": "Oscilloscope calibration sticker illegible — last cert date not verifiable.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-07-05", "Responsible_Party": "Workshop Lead", "Risk_Score": 38},
+    {"Finding_ID": "AMO-2026-006", "Department": "Technical Records", "Finding_Description": "AD/SB compliance log for A320 family (9V-SMQ, 9V-SMR) missing three entries from February 2026.", "Severity": "High", "Status": "In Progress", "Due_Date": "2026-08-10", "Responsible_Party": "Records Officer", "Risk_Score": 75},
+    {"Finding_ID": "AMO-2026-007", "Department": "Line Maintenance", "Finding_Description": "Two hydraulic mule hoses (S/N HM-221, HM-223) showing chafing beyond allowable wear limits.", "Severity": "Medium", "Status": "In Progress", "Due_Date": "2026-07-28", "Responsible_Party": "Tooling Controller", "Risk_Score": 42},
+    {"Finding_ID": "AMO-2026-008", "Department": "Engine Test Cell", "Finding_Description": "Test cell log for CFM56-7B run #4471 has unapproved handwritten cross-outs on thrust readings.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-07-02", "Responsible_Party": "Test Cell Lead", "Risk_Score": 50},
+    {"Finding_ID": "AMO-2026-009", "Department": "Parts Warehouse", "Finding_Description": "Shelf-life tracking spreadsheet not updated for 6 weeks — 11 chemical items past expiry.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-06-28", "Responsible_Party": "Stores Supervisor", "Risk_Score": 55},
+    {"Finding_ID": "AMO-2026-010", "Department": "Technical Records", "Finding_Description": "Digital signature certificate for Records Officer expiring in 8 days — renewal not initiated.", "Severity": "Low", "Status": "Closed", "Due_Date": "2026-07-01", "Responsible_Party": "IT Support", "Risk_Score": 20},
+    {"Finding_ID": "AMO-2026-011", "Department": "Line Maintenance", "Finding_Description": "One of three redundant tug batteries found at 11.8 V (minimum 12.4 V for dispatch).", "Severity": "Low", "Status": "Closed", "Due_Date": "2026-06-25", "Responsible_Party": "Ground Support Lead", "Risk_Score": 18},
+    {"Finding_ID": "AMO-2026-012", "Department": "Avionics Workshop", "Finding_Description": "Workshop bench ESD mat resistance reading at 1.2 GΩ — exceeds 1.0 GΩ threshold.", "Severity": "Observation", "Status": "Closed", "Due_Date": "2026-06-20", "Responsible_Party": "Workshop Lead", "Risk_Score": 8},
+]
+
+AMO_HOTSPOTS = [
+    {"Department": "Avionics Workshop", "Finding_Count": 3, "Severity_Band": "critical"},
+    {"Department": "Line Maintenance", "Finding_Count": 3, "Severity_Band": "watch"},
+    {"Department": "Engine Test Cell", "Finding_Count": 2, "Severity_Band": "critical"},
+    {"Department": "Parts Warehouse", "Finding_Count": 2, "Severity_Band": "watch"},
+    {"Department": "Technical Records", "Finding_Count": 2, "Severity_Band": "watch"},
+]
+
+AMO_ALERTS = [
+    {"Finding_ID": "AMO-2026-002", "Department": "Engine Test Cell", "Issue": "Fire suppression cert expired — E190 and B737NG test runs at risk", "Risk_Score": 92},
+    {"Finding_ID": "AMO-2026-001", "Department": "Avionics Workshop", "Issue": "Uncertified torque tools in active use on A320 brake assemblies", "Risk_Score": 72},
+    {"Finding_ID": "AMO-2026-006", "Department": "Technical Records", "Issue": "AD/SB compliance gap — 2 A320 aircraft with missing mandatory mod records", "Risk_Score": 75},
+    {"Finding_ID": "AMO-2026-003", "Department": "Parts Warehouse", "Issue": "Unsegregated unserviceable parts could re-enter supply chain", "Risk_Score": 68},
+]
+
+AMO_TACTICAL = [{
+    "Tactical_Audit_ID": "AUDIT-AMO-2026-Q2",
+    "Tail_ID": "SIA Engineering-WSSS",
+    "Composite_Risk_Score": 52,
+    "Intelligence_Summary": "Q2 quality audit reveals systemic documentation and tool-control gaps concentrated in Avionics Workshop and Line Maintenance. The single critical finding (expired fire-suppression cert in the test cell) requires immediate escalation. Positive closure rate on low/observation items shows corrective-action process is functioning for routine issues, but High and Critical items persist longer than the 30-day target.",
+    "Action_1": "Escalate AMO-2026-002 (fire suppression cert) to Facility Manager with daily tracking — grounds all engine test runs until resolved.",
+    "Action_2": "Conduct a stand-down tool-control briefing in Avionics Workshop by end of week, covering calibration tracking and ESD mat compliance.",
+    "Action_3": "Reconcile AD/SB compliance log for 9V-SMQ and 9V-SMR against OEM service bulletins within 10 business days.",
+}]
+
+AMO_RECENT = [
+    {"Date": "2026-07-18", "Department": "Engine Test Cell", "Finding": "Fire suppression cert expired", "Severity": "Critical", "Status": "In Progress", "Summary": "Hydrostatic test cert for FM-200 system in test cell #2 expired 2026-07-04; certificate renewal submitted to Bureau Veritas, ETA 2026-07-30."},
+    {"Date": "2026-07-15", "Department": "Avionics Workshop", "Finding": "Torque wrench calibration overdue", "Severity": "High", "Status": "Open", "Summary": "Two Snap-on torque wrenches (S/N TQ-441, TQ-442) past 90-day recertification; replacement tools requisitioned but not yet received."},
+    {"Date": "2026-07-12", "Department": "Technical Records", "Finding": "AD/SB compliance gap", "Severity": "High", "Status": "In Progress", "Summary": "Three entries missing from AD compliance binder for A320 family covering February 2026; records officer reviewing logbook archives."},
+    {"Date": "2026-07-08", "Department": "Parts Warehouse", "Finding": "Unsegregated components", "Severity": "High", "Status": "In Progress", "Summary": "Three unserviceable actuators found in serviceable bins during spot check; quarantine initiated and receiving inspection procedure reinforced."},
+    {"Date": "2026-07-02", "Department": "Line Maintenance", "Finding": "Missing task card sign-off", "Severity": "Medium", "Status": "Closed", "Summary": "Task card CA-4412-B for 9V-SMU night check signed off retrospectively after audit identified the gap; shift lead counselled on documentation discipline."},
+]
+
+AMO_FINDINGS_BY_SEVERITY = [
+    {"Severity": "Critical", "Count": 1},
+    {"Severity": "High", "Count": 3},
+    {"Severity": "Medium", "Count": 5},
+    {"Severity": "Low", "Count": 2},
+    {"Severity": "Observation", "Count": 1},
+]
+
+AMO_FINDINGS_BY_DEPT = [
+    {"Department": "Avionics Workshop", "Open": 1, "In_Progress": 0, "Closed": 2},
+    {"Department": "Line Maintenance", "Open": 0, "In_Progress": 1, "Closed": 2},
+    {"Department": "Engine Test Cell", "Open": 0, "In_Progress": 1, "Closed": 1},
+    {"Department": "Parts Warehouse", "Open": 0, "In_Progress": 1, "Closed": 1},
+    {"Department": "Technical Records", "Open": 0, "In_Progress": 1, "Closed": 1},
+]
+
 
 async def run_mock_chat_stream(session_id: str, message: str) -> AsyncIterator[dict]:
     del session_id
@@ -111,6 +195,11 @@ async def run_mock_chat_stream(session_id: str, message: str) -> AsyncIterator[d
 
     if "bird strike" in text:
         async for event in _bird_dashboard_events():
+            yield event
+        return
+
+    if "maintenance" in text or "amo" in text or "audit" in text:
+        async for event in _amo_audit_dashboard_events():
             yield event
         return
 
@@ -169,4 +258,42 @@ async def _bird_dashboard_events() -> AsyncIterator[dict]:
     yield {
         "type": "final",
         "data": "- Bird-strike counts are trending upward into the latest quarter, with the highest pressure in the most recent two months.\n- Engine, windshield, and cockpit-window events remain the dominant subtype pattern.\n- Current hotspots cluster around WSSS approach and climb-out corridors, which matches the tactical note's mitigation focus.\n\nSources:\n- vw_SafetyIntel_Occurrences\n- vw_SafetyIntel_OccurrenceHotspots\n- vw_SafetyIntel_OccurrenceOps\n- vw_SafetyIntel_TacticalAudit",
+    }
+
+
+async def _amo_audit_dashboard_events() -> AsyncIterator[dict]:
+    severity_chart = chart_spec(AMO_FINDINGS_BY_SEVERITY, intent="bar", x="Severity", y="Count", title="Audit findings by severity")
+    dept_chart = chart_spec(
+        AMO_FINDINGS_BY_DEPT,
+        intent="bar",
+        x="Department",
+        y="Open",
+        color="Department",
+        title="Open findings by department",
+    )
+    dashboard = dashboard_spec(
+        datasets=[
+            {"name": "overview", "rows": AMO_OVERVIEW},
+            {"name": "tracks", "rows": AMO_FINDINGS},
+            {"name": "hotspots", "rows": AMO_HOTSPOTS},
+            {"name": "alerts", "rows": AMO_ALERTS},
+            {"name": "tactical_audit", "rows": AMO_TACTICAL},
+            {"name": "recent_records", "rows": AMO_RECENT},
+        ],
+        title="AMO Quality Audit Dashboard",
+        domain="amo_audit",
+        focus="SIA Engineering Line Maintenance — Q2 2026 audit results",
+    )
+    for name, output in (
+        ("chart_spec", severity_chart),
+        ("chart_spec", dept_chart),
+        ("dashboard_spec", dashboard),
+    ):
+        yield {"type": "tool_call", "data": {"name": name, "arguments": {"demo": True}}}
+        await asyncio.sleep(0)
+        yield {"type": "tool_result", "data": {"name": name, "output": json.dumps(output)}}
+        await asyncio.sleep(0)
+    yield {
+        "type": "final",
+        "data": "- 1 critical finding (fire suppression cert expired) grounds all engine test cell operations until resolved.\n- Avionics Workshop and Line Maintenance account for 50% of all findings — systemic tool-control gaps identified.\n- 6 of 12 findings already closed; closure rate is healthy for low/medium items but High/Critical items average 28 days open, exceeding the 21-day KPI.\n- Top risk: unsegregated unserviceable parts in the warehouse could re-enter the supply chain if quarantine procedure is not reinforced.\n\nSources:\n- DM_TBL_SRG_AMO_ASSIGNED_PMI\n- DM_TBL_SRG_AMO_MOA\n- DM_TBL_SRG_AMO_TAM_LIST\n- DM_TBL_SRG_TACTICAL_AUDIT\n- DM_TBL_SRG_OCCURRENCES",
     }
