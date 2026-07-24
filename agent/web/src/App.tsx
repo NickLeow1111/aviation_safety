@@ -32,30 +32,6 @@ function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function extractHighlights(text: string, charts: ChartArtifact[]): string[] {
-  const cleaned = text
-    .split("\n")
-    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
-    .filter((line) => line && !line.toLowerCase().startsWith("sources:"));
-
-  if (cleaned.length > 0) {
-    return cleaned.slice(0, 3);
-  }
-
-  if (charts.length > 0) {
-    return [
-      "Latest output has been pinned to the single flow panel.",
-      "Follow-up queries can be asked directly from the same session.",
-      "The chart and memo stay aligned so the answer reads as one response.",
-    ];
-  }
-
-  return [
-    "Start with a dashboard prompt to populate the output panel.",
-    "Ask for a focused drill-down and the response will keep flowing in one place.",
-  ];
-}
-
 export default function App() {
   const [ready, setReady] = useState<ReadyState>("checking");
   const [readyMsg, setReadyMsg] = useState("");
@@ -150,11 +126,6 @@ export default function App() {
     () => [...messages].reverse().find((message) => message.role === "user")?.text ?? "Awaiting analyst brief",
     [messages],
   );
-  const latestNarrative = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "bot")?.text ?? "",
-    [messages],
-  );
-  const highlights = useMemo(() => extractHighlights(latestNarrative, charts), [latestNarrative, charts]);
 
   return (
     <div className="app-shell">
@@ -172,9 +143,7 @@ export default function App() {
         <Canvas
           charts={charts}
           traces={traces}
-          summaryText={latestNarrative}
           lastPrompt={latestUserPrompt}
-          highlights={highlights}
         />
       </main>
     </div>

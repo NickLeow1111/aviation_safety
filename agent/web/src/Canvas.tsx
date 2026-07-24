@@ -65,15 +65,11 @@ type ExecutiveTable = {
 export function Canvas({
   charts,
   traces,
-  summaryText,
   lastPrompt,
-  highlights,
 }: {
   charts: ChartArtifact[];
   traces: ToolTrace[];
-  summaryText: string;
   lastPrompt: string;
-  highlights: string[];
 }) {
   const latestChart = getSpotlightChart(charts);
 
@@ -98,44 +94,6 @@ export function Canvas({
             </div>
           )}
         </section>
-
-        <aside className="output-side">
-          <div className="info-card compact">
-            <span className="info-card-title">Summary</span>
-            <div className="info-card-body">
-              <p>{summaryText || "The assistant response will appear here as the prompt is resolved."}</p>
-            </div>
-          </div>
-
-          <div className="info-card compact">
-            <span className="info-card-title">Pinned takeaways</span>
-            <div className="info-card-body">
-              <ul className="insight-list">
-                {highlights.map((highlight) => (
-                  <li key={highlight}>{highlight}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="info-card compact">
-            <span className="info-card-title">Recent trace</span>
-            <div className="info-card-body">
-              {traces.length === 0 ? (
-                <p>No tool activity yet.</p>
-              ) : (
-                <ul className="artifact-list">
-                  {traces.slice(-3).reverse().map((trace) => (
-                    <li key={trace.id}>
-                      <span>{trace.name}</span>
-                      <small>{trace.status}</small>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </aside>
       </div>
     </div>
   );
