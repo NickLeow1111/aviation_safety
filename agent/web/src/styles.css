@@ -1302,3 +1302,107 @@ table.data th {
     flex: 1;
   }
 }
+
+/* ---------- AMO Findings table ---------- */
+
+.amo-findings-panel {
+  border: 1px solid rgba(125, 145, 173, 0.18);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 16px;
+}
+
+.amo-findings-table {
+  max-height: 480px;
+  overflow-y: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(125, 145, 173, 0.12);
+}
+
+.amo-findings-table table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.amo-findings-table table.data th {
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, #f3f6fc, #e8eef8);
+  padding: 10px 8px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(125, 145, 173, 0.18);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.amo-findings-table table.data td {
+  padding: 8px;
+  border-bottom: 1px solid rgba(125, 145, 173, 0.08);
+  vertical-align: middle;
+}
+
+.amo-findings-table table.data tbody tr:hover {
+  background: rgba(31, 111, 235, 0.04);
+}
+
+.amo-findings-table .cell-mono {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.amo-findings-table .cell-desc {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.severity-badge {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.severity-badge.critical {
+  background: rgba(230, 57, 70, 0.14);
+  color: #b91c1c;
+  border: 1px solid rgba(230, 57, 70, 0.22);
+}
+
+.severity-badge.high {
+  background: rgba(242, 143, 59, 0.14);
+  color: #b45309;
+  border: 1px solid rgba(242, 143, 59, 0.22);
+}
+
+.severity-badge.medium {
+  background: rgba(31, 111, 235, 0.1);
+  color: #1e40af;
+  border: 1px solid rgba(31, 111, 235, 0.16);
+}
+
+.severity-badge.low {
+  background: rgba(13, 148, 136, 0.1);
+  color: #0f766e;
+  border: 1px solid rgba(13, 148, 136, 0.16);
+}
+
+.severity-badge.observation {
+  background: rgba(125, 145, 173, 0.1);
+  color: #5f6f86;
+  border: 1px solid rgba(125, 145, 173, 0.16);
+}

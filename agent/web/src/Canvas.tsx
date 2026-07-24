@@ -229,7 +229,6 @@ function ChartCard({ spec, variant = "standard" }: { spec: any; variant?: "hero"
 
 function OpsDashboardCard({ spec, variant }: { spec: OpsDashboardSpec; variant: "hero" | "standard" }) {
   const [showRaw, setShowRaw] = useState(false);
-  const bounds = getBounds([...spec.hotspots, ...spec.tracks]);
   const executiveRecentRecords = toExecutiveRecentRecords(spec.recent_records);
 
   return (
@@ -260,120 +259,11 @@ function OpsDashboardCard({ spec, variant }: { spec: OpsDashboardSpec; variant: 
         ))}
       </div>
 
-      <div className="ops-stage">
-        <div className="ops-map-panel">
-          <div className="ops-map-head">
-            <div>
-              <span className="eyebrow">Runway / Apron Schematic</span>
-              <p className="ops-map-note">
-                Relative hotspot and aircraft positions are normalized into an airfield-style
-                layout so congestion and approach patterns read faster than in the abstract grid.
-              </p>
-            </div>
-            <small>{spec.domain.replace(/_/g, " ")}</small>
-          </div>
-          <div className="ops-map-surface">
-            <div className="airfield-apron terminal"><span>Terminal apron</span></div>
-            <div className="airfield-apron remote"><span>Remote stands</span></div>
-            <div className="airfield-runway primary"><span>RWY 02 / 20</span></div>
-            <div className="airfield-runway secondary"><span>RWY 11 / 29</span></div>
-            <div className="airfield-taxi alpha" />
-            <div className="airfield-taxi bravo" />
-            <div className="ops-map-label north">North marker</div>
-            <div className="ops-map-label center">Operational schematic</div>
-
-            {spec.hotspots.map((hotspot) => {
-              const position = normalizePoint(hotspot.latitude, hotspot.longitude, bounds);
-              return (
-                <div
-                  key={hotspot.zone_id}
-                  className="hotspot-node"
-                  style={{ left: `${position.left}%`, top: `${position.top}%` }}
-                >
-                  <div className={`hotspot-chip ${severityClass(hotspot.severity)}`} title={`${hotspot.label}: ${hotspot.count}`}>
-                    <span>{hotspot.count}</span>
-                  </div>
-                  <div className="hotspot-caption">{hotspot.label}</div>
-                </div>
-              );
-            })}
-
-            {spec.tracks.map((track) => {
-              const position = normalizePoint(track.latitude, track.longitude, bounds);
-              return (
-                <div
-                  key={track.track_id}
-                  className="track-node"
-                  style={{ left: `${position.left}%`, top: `${position.top}%` }}
-                  title={`${track.callsign} ${track.flight_level} ${track.speed_kts} KTS`}
-                >
-                  <div
-                    className={`track-marker ${riskClass(track.risk_score)}`}
-                    style={{ transform: `rotate(${track.heading_deg}deg)` }}
-                  />
-                  <div className="track-label">
-                    <strong>{track.callsign}</strong>
-                    <small>{track.flight_level} • {track.speed_kts} KTS</small>
-                  </div>
-                </div>
-              );
-            })}
-
-            <div className="ops-map-legend">
-              <span><i className="legend-swatch hotspot critical" /> Hotspot cluster</span>
-              <span><i className="legend-swatch track high" /> Aircraft vector + callsign</span>
-              <span><i className="legend-swatch overlay" /> Schematic placement</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="ops-side-rail">
-          <div className="ops-side-card intelligence">
-            <div className="ops-side-head">
-              <span className="eyebrow">Intelligence</span>
-              <small>{spec.alerts.length} live cues</small>
-            </div>
-            {spec.alerts.length === 0 ? (
-              <p>No active alerts in this dataset.</p>
-            ) : (
-              <ul className="ops-alert-list">
-                {spec.alerts.map((alert) => (
-                  <li key={`${alert.callsign}-${alert.tail_id}`}>
-                    <div>
-                      <strong>{alert.callsign}</strong>
-                      <small>{alert.flight_level} • {alert.speed_kts} KTS</small>
-                    </div>
-                    <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="ops-side-card tactical">
-            <div className="ops-side-head">
-              <span className="eyebrow">Tactical audit</span>
-              <small>{spec.tactical_audit?.tail_id ?? "No tail id"}</small>
-            </div>
-            {spec.tactical_audit ? (
-              <>
-                <div className="tactical-score">
-                  <span>Composite risk score</span>
-                  <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
-                </div>
-                <p>{spec.tactical_audit.summary}</p>
-                <ul className="insight-list compact">
-                  {spec.tactical_audit.actions.map((action) => (
-                    <li key={action}>{action}</li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p>No tactical note available.</p>
-            )}
-          </div>
-        </div>
-      </div>
+      {spec.domain === "amo_audit" ? (
+        <AmoAuditPanel spec={spec} />
+      ) : (
+        <OpsStagePanel spec={spec} />
+      )}
 
       <div className="ops-lower-deck">
         <div className="ops-side-card recent-records">
@@ -415,6 +305,235 @@ function OpsDashboardCard({ spec, variant }: { spec: OpsDashboardSpec; variant: 
       </div>
 
       {showRaw && <pre className="spec-debug">{JSON.stringify(spec, null, 2)}</pre>}
+    </div>
+  );
+}
+
+function AmoAuditPanel({ spec }: { spec: OpsDashboardSpec }) {
+  const findings = spec.tracks.map((track) => ({
+    id: track.track_id,
+    callsign: track.callsign,
+    tail_id: track.tail_id,
+    flight_level: track.flight_level,
+    speed_kts: track.speed_kts,
+    risk_score: track.risk_score,
+  }));
+
+  return (
+    <div className="ops-stage">
+      <div className="amo-findings-panel">
+        <div className="ops-map-head">
+          <div>
+            <span className="eyebrow">Audit findings</span>
+            <p className="ops-map-note">
+              All {spec.tracks.length} findings from the Q2 quality audit, sorted by severity and status.
+            </p>
+          </div>
+          <small>amo_audit</small>
+        </div>
+        <div className="amo-findings-table">
+          <table className="data findings-table">
+            <thead>
+              <tr>
+                <th>Finding ID</th>
+                <th>Department</th>
+                <th>Description</th>
+                <th>Severity</th>
+                <th>Status</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {spec.tracks.map((track) => (
+                <tr key={track.track_id}>
+                  <td className="cell-mono">{track.track_id}</td>
+                  <td>{track.callsign}</td>
+                  <td className="cell-desc">{track.flight_level}</td>
+                  <td>
+                    <span className={`severity-badge ${severityFromRisk(track.risk_score)}`}>
+                      {severityLabel(track.risk_score)}
+                    </span>
+                  </td>
+                  <td>{track.tail_id}</td>
+                  <td>
+                    <span className={`risk-pill ${riskClass(track.risk_score)}`}>
+                      {Math.round(track.risk_score)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="ops-side-rail">
+        <div className="ops-side-card intelligence">
+          <div className="ops-side-head">
+            <span className="eyebrow">Critical alerts</span>
+            <small>{spec.alerts.length} active</small>
+          </div>
+          {spec.alerts.length === 0 ? (
+            <p>No active alerts.</p>
+          ) : (
+            <ul className="ops-alert-list">
+              {spec.alerts.map((alert) => (
+                <li key={alert.callsign}>
+                  <div>
+                    <strong>{alert.callsign}</strong>
+                    <small>{alert.flight_level}</small>
+                  </div>
+                  <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ops-side-card tactical">
+          <div className="ops-side-head">
+            <span className="eyebrow">Tactical audit</span>
+            <small>{spec.tactical_audit?.tail_id ?? "N/A"}</small>
+          </div>
+          {spec.tactical_audit ? (
+            <>
+              <div className="tactical-score">
+                <span>Composite risk score</span>
+                <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
+              </div>
+              <p>{spec.tactical_audit.summary}</p>
+              <ul className="insight-list compact">
+                {spec.tactical_audit.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No tactical note available.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OpsStagePanel({ spec }: { spec: OpsDashboardSpec }) {
+  const bounds = getBounds([...spec.hotspots, ...spec.tracks]);
+
+  return (
+    <div className="ops-stage">
+      <div className="ops-map-panel">
+        <div className="ops-map-head">
+          <div>
+            <span className="eyebrow">Runway / Apron Schematic</span>
+            <p className="ops-map-note">
+              Relative hotspot and aircraft positions are normalized into an airfield-style
+              layout so congestion and approach patterns read faster than in the abstract grid.
+            </p>
+          </div>
+          <small>{spec.domain.replace(/_/g, " ")}</small>
+        </div>
+        <div className="ops-map-surface">
+          <div className="airfield-apron terminal"><span>Terminal apron</span></div>
+          <div className="airfield-apron remote"><span>Remote stands</span></div>
+          <div className="airfield-runway primary"><span>RWY 02 / 20</span></div>
+          <div className="airfield-runway secondary"><span>RWY 11 / 29</span></div>
+          <div className="airfield-taxi alpha" />
+          <div className="airfield-taxi bravo" />
+          <div className="ops-map-label north">North marker</div>
+          <div className="ops-map-label center">Operational schematic</div>
+
+          {spec.hotspots.map((hotspot) => {
+            const position = normalizePoint(hotspot.latitude, hotspot.longitude, bounds);
+            return (
+              <div
+                key={hotspot.zone_id}
+                className="hotspot-node"
+                style={{ left: `${position.left}%`, top: `${position.top}%` }}
+              >
+                <div className={`hotspot-chip ${severityClass(hotspot.severity)}`} title={`${hotspot.label}: ${hotspot.count}`}>
+                  <span>{hotspot.count}</span>
+                </div>
+                <div className="hotspot-caption">{hotspot.label}</div>
+              </div>
+            );
+          })}
+
+          {spec.tracks.map((track) => {
+            const position = normalizePoint(track.latitude, track.longitude, bounds);
+            return (
+              <div
+                key={track.track_id}
+                className="track-node"
+                style={{ left: `${position.left}%`, top: `${position.top}%` }}
+                title={`${track.callsign} ${track.flight_level} ${track.speed_kts} KTS`}
+              >
+                <div
+                  className={`track-marker ${riskClass(track.risk_score)}`}
+                  style={{ transform: `rotate(${track.heading_deg}deg)` }}
+                />
+                <div className="track-label">
+                  <strong>{track.callsign}</strong>
+                  <small>{track.flight_level} • {track.speed_kts} KTS</small>
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="ops-map-legend">
+            <span><i className="legend-swatch hotspot critical" /> Hotspot cluster</span>
+            <span><i className="legend-swatch track high" /> Aircraft vector + callsign</span>
+            <span><i className="legend-swatch overlay" /> Schematic placement</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="ops-side-rail">
+        <div className="ops-side-card intelligence">
+          <div className="ops-side-head">
+            <span className="eyebrow">Intelligence</span>
+            <small>{spec.alerts.length} live cues</small>
+          </div>
+          {spec.alerts.length === 0 ? (
+            <p>No active alerts in this dataset.</p>
+          ) : (
+            <ul className="ops-alert-list">
+              {spec.alerts.map((alert) => (
+                <li key={`${alert.callsign}-${alert.tail_id}`}>
+                  <div>
+                    <strong>{alert.callsign}</strong>
+                    <small>{alert.flight_level} • {alert.speed_kts} KTS</small>
+                  </div>
+                  <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ops-side-card tactical">
+          <div className="ops-side-head">
+            <span className="eyebrow">Tactical audit</span>
+            <small>{spec.tactical_audit?.tail_id ?? "No tail id"}</small>
+          </div>
+          {spec.tactical_audit ? (
+            <>
+              <div className="tactical-score">
+                <span>Composite risk score</span>
+                <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
+              </div>
+              <p>{spec.tactical_audit.summary}</p>
+              <ul className="insight-list compact">
+                {spec.tactical_audit.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No tactical note available.</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -522,4 +641,20 @@ function riskClass(score: number) {
   if (score >= 20) return "high";
   if (score >= 12) return "medium";
   return "low";
+}
+
+function severityFromRisk(score: number): string {
+  if (score >= 80) return "critical";
+  if (score >= 60) return "high";
+  if (score >= 35) return "medium";
+  if (score >= 15) return "low";
+  return "observation";
+}
+
+function severityLabel(score: number): string {
+  if (score >= 80) return "Critical";
+  if (score >= 60) return "High";
+  if (score >= 35) return "Medium";
+  if (score >= 15) return "Low";
+  return "Observation";
 }

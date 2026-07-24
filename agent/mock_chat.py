@@ -120,33 +120,33 @@ AMO_OVERVIEW = [{
 }]
 
 AMO_FINDINGS = [
-    {"Finding_ID": "AMO-2026-001", "Department": "Avionics Workshop", "Finding_Description": "Two calibrated torque wrenches found past their 90-day recertification due date.", "Severity": "High", "Status": "Open", "Due_Date": "2026-08-15", "Responsible_Party": "Avionics Supervisor", "Risk_Score": 72},
-    {"Finding_ID": "AMO-2026-002", "Department": "Engine Test Cell", "Finding_Description": "Fire suppression system hydrostatic test certificate expired 14 days ago.", "Severity": "Critical", "Status": "In Progress", "Due_Date": "2026-07-30", "Responsible_Party": "Facility Manager", "Risk_Score": 92},
-    {"Finding_ID": "AMO-2026-003", "Department": "Parts Warehouse", "Finding_Description": "Three unserviceable components (P/N 68A-4520-12) not segregated from serviceable stock.", "Severity": "High", "Status": "In Progress", "Due_Date": "2026-08-01", "Responsible_Party": "Stores Supervisor", "Risk_Score": 68},
-    {"Finding_ID": "AMO-2026-004", "Department": "Line Maintenance", "Finding_Description": "Technician logbook entry for 9V-SMU night check missing sign-off on task card CA-4412-B.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-07-10", "Responsible_Party": "Shift Lead", "Risk_Score": 45},
-    {"Finding_ID": "AMO-2026-005", "Department": "Avionics Workshop", "Finding_Description": "Oscilloscope calibration sticker illegible — last cert date not verifiable.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-07-05", "Responsible_Party": "Workshop Lead", "Risk_Score": 38},
-    {"Finding_ID": "AMO-2026-006", "Department": "Technical Records", "Finding_Description": "AD/SB compliance log for A320 family (9V-SMQ, 9V-SMR) missing three entries from February 2026.", "Severity": "High", "Status": "In Progress", "Due_Date": "2026-08-10", "Responsible_Party": "Records Officer", "Risk_Score": 75},
-    {"Finding_ID": "AMO-2026-007", "Department": "Line Maintenance", "Finding_Description": "Two hydraulic mule hoses (S/N HM-221, HM-223) showing chafing beyond allowable wear limits.", "Severity": "Medium", "Status": "In Progress", "Due_Date": "2026-07-28", "Responsible_Party": "Tooling Controller", "Risk_Score": 42},
-    {"Finding_ID": "AMO-2026-008", "Department": "Engine Test Cell", "Finding_Description": "Test cell log for CFM56-7B run #4471 has unapproved handwritten cross-outs on thrust readings.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-07-02", "Responsible_Party": "Test Cell Lead", "Risk_Score": 50},
-    {"Finding_ID": "AMO-2026-009", "Department": "Parts Warehouse", "Finding_Description": "Shelf-life tracking spreadsheet not updated for 6 weeks — 11 chemical items past expiry.", "Severity": "Medium", "Status": "Closed", "Due_Date": "2026-06-28", "Responsible_Party": "Stores Supervisor", "Risk_Score": 55},
-    {"Finding_ID": "AMO-2026-010", "Department": "Technical Records", "Finding_Description": "Digital signature certificate for Records Officer expiring in 8 days — renewal not initiated.", "Severity": "Low", "Status": "Closed", "Due_Date": "2026-07-01", "Responsible_Party": "IT Support", "Risk_Score": 20},
-    {"Finding_ID": "AMO-2026-011", "Department": "Line Maintenance", "Finding_Description": "One of three redundant tug batteries found at 11.8 V (minimum 12.4 V for dispatch).", "Severity": "Low", "Status": "Closed", "Due_Date": "2026-06-25", "Responsible_Party": "Ground Support Lead", "Risk_Score": 18},
-    {"Finding_ID": "AMO-2026-012", "Department": "Avionics Workshop", "Finding_Description": "Workshop bench ESD mat resistance reading at 1.2 GΩ — exceeds 1.0 GΩ threshold.", "Severity": "Observation", "Status": "Closed", "Due_Date": "2026-06-20", "Responsible_Party": "Workshop Lead", "Risk_Score": 8},
+    {"Track_ID": "AMO-2026-001", "Callsign": "Avionics Workshop", "Tail_ID": "Open", "Flight_Level": "Torque wrench calibration overdue", "Severity_Band": "high", "Risk_Score": 72, "Due_Date": "2026-08-15"},
+    {"Track_ID": "AMO-2026-002", "Callsign": "Engine Test Cell", "Tail_ID": "In Progress", "Flight_Level": "Fire suppression cert expired", "Severity_Band": "critical", "Risk_Score": 92, "Due_Date": "2026-07-30"},
+    {"Track_ID": "AMO-2026-003", "Callsign": "Parts Warehouse", "Tail_ID": "In Progress", "Flight_Level": "Unsegregated unserviceable components", "Severity_Band": "high", "Risk_Score": 68, "Due_Date": "2026-08-01"},
+    {"Track_ID": "AMO-2026-004", "Callsign": "Line Maintenance", "Tail_ID": "Closed", "Flight_Level": "Missing task card sign-off", "Severity_Band": "medium", "Risk_Score": 45, "Due_Date": "2026-07-10"},
+    {"Track_ID": "AMO-2026-005", "Callsign": "Avionics Workshop", "Tail_ID": "Closed", "Flight_Level": "Oscilloscope calibration illegible", "Severity_Band": "medium", "Risk_Score": 38, "Due_Date": "2026-07-05"},
+    {"Track_ID": "AMO-2026-006", "Callsign": "Technical Records", "Tail_ID": "In Progress", "Flight_Level": "AD/SB compliance log incomplete", "Severity_Band": "high", "Risk_Score": 75, "Due_Date": "2026-08-10"},
+    {"Track_ID": "AMO-2026-007", "Callsign": "Line Maintenance", "Tail_ID": "In Progress", "Flight_Level": "Hydraulic mule hose chafing", "Severity_Band": "medium", "Risk_Score": 42, "Due_Date": "2026-07-28"},
+    {"Track_ID": "AMO-2026-008", "Callsign": "Engine Test Cell", "Tail_ID": "Closed", "Flight_Level": "Test cell log unapproved cross-outs", "Severity_Band": "medium", "Risk_Score": 50, "Due_Date": "2026-07-02"},
+    {"Track_ID": "AMO-2026-009", "Callsign": "Parts Warehouse", "Tail_ID": "Closed", "Flight_Level": "Shelf-life tracking not updated", "Severity_Band": "medium", "Risk_Score": 55, "Due_Date": "2026-06-28"},
+    {"Track_ID": "AMO-2026-010", "Callsign": "Technical Records", "Tail_ID": "Closed", "Flight_Level": "Digital signature cert expiring", "Severity_Band": "low", "Risk_Score": 20, "Due_Date": "2026-07-01"},
+    {"Track_ID": "AMO-2026-011", "Callsign": "Line Maintenance", "Tail_ID": "Closed", "Flight_Level": "Tug battery undervoltage", "Severity_Band": "low", "Risk_Score": 18, "Due_Date": "2026-06-25"},
+    {"Track_ID": "AMO-2026-012", "Callsign": "Avionics Workshop", "Tail_ID": "Closed", "Flight_Level": "ESD mat resistance exceeds threshold", "Severity_Band": "observation", "Risk_Score": 8, "Due_Date": "2026-06-20"},
 ]
 
 AMO_HOTSPOTS = [
-    {"Department": "Avionics Workshop", "Finding_Count": 3, "Severity_Band": "critical"},
-    {"Department": "Line Maintenance", "Finding_Count": 3, "Severity_Band": "watch"},
-    {"Department": "Engine Test Cell", "Finding_Count": 2, "Severity_Band": "critical"},
-    {"Department": "Parts Warehouse", "Finding_Count": 2, "Severity_Band": "watch"},
-    {"Department": "Technical Records", "Finding_Count": 2, "Severity_Band": "watch"},
+    {"Zone_Label": "Avionics Workshop", "Event_Count": 3, "Severity_Band": "critical"},
+    {"Zone_Label": "Line Maintenance", "Event_Count": 3, "Severity_Band": "watch"},
+    {"Zone_Label": "Engine Test Cell", "Event_Count": 2, "Severity_Band": "critical"},
+    {"Zone_Label": "Parts Warehouse", "Event_Count": 2, "Severity_Band": "watch"},
+    {"Zone_Label": "Technical Records", "Event_Count": 2, "Severity_Band": "watch"},
 ]
 
 AMO_ALERTS = [
-    {"Finding_ID": "AMO-2026-002", "Department": "Engine Test Cell", "Issue": "Fire suppression cert expired — E190 and B737NG test runs at risk", "Risk_Score": 92},
-    {"Finding_ID": "AMO-2026-001", "Department": "Avionics Workshop", "Issue": "Uncertified torque tools in active use on A320 brake assemblies", "Risk_Score": 72},
-    {"Finding_ID": "AMO-2026-006", "Department": "Technical Records", "Issue": "AD/SB compliance gap — 2 A320 aircraft with missing mandatory mod records", "Risk_Score": 75},
-    {"Finding_ID": "AMO-2026-003", "Department": "Parts Warehouse", "Issue": "Unsegregated unserviceable parts could re-enter supply chain", "Risk_Score": 68},
+    {"Callsign": "Engine Test Cell", "Flight_Level": "Fire suppression cert expired — E190 and B737NG test runs at risk", "Risk_Score": 92},
+    {"Callsign": "Avionics Workshop", "Flight_Level": "Uncertified torque tools in active use on A320 brake assemblies", "Risk_Score": 72},
+    {"Callsign": "Technical Records", "Flight_Level": "AD/SB compliance gap — 2 A320 aircraft with missing mandatory mod records", "Risk_Score": 75},
+    {"Callsign": "Parts Warehouse", "Flight_Level": "Unsegregated unserviceable parts could re-enter supply chain", "Risk_Score": 68},
 ]
 
 AMO_TACTICAL = [{
