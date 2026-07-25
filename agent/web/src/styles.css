@@ -51,6 +51,87 @@
 
 * { box-sizing: border-box; }
 
+/* =============================================================
+   Top nav bar
+   ============================================================= */
+
+.app-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  height: 48px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.navbar-icon {
+  color: var(--navy);
+  opacity: 0.8;
+}
+
+.navbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.navbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 160ms ease;
+  white-space: nowrap;
+}
+
+.navbar-btn:hover:not(:disabled) {
+  background: var(--navy-mist);
+  border-color: var(--accent-soft);
+  color: var(--navy);
+}
+
+.navbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.navbar-btn svg {
+  flex-shrink: 0;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -71,7 +152,8 @@ html, body, #root {
   grid-template-columns: minmax(320px, 360px) 1fr;
   gap: 16px;
   padding: 16px;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
 }
 
 .workspace {

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Chat } from "./Chat";
 import { Canvas } from "./Canvas";
+import { NavBar } from "./NavBar";
 import { streamChat } from "./sse";
 import type { ChartArtifact, ChatMessage, ToolTrace } from "./types";
 
@@ -40,7 +41,7 @@ export default function App() {
   const [traces, setTraces] = useState<ToolTrace[]>([]);
   const [charts, setCharts] = useState<ChartArtifact[]>([]);
   const [busy, setBusy] = useState(false);
-  const sessionId = useMemo(() => `web-${generateId()}`, []);
+  const sessionId = useRef(`web-${generateId()}`);
   const seqRef = useRef(0);
   const nextId = () => `${Date.now()}-${++seqRef.current}`;
 
@@ -74,7 +75,7 @@ export default function App() {
     const lastToolIdRef = { current: "" };
 
     try {
-      for await (const ev of streamChat(sessionId, text)) {
+      for await (const ev of streamChat(sessionId.current, text)) {
         if (ev.type === "tool_call") {
           const tid = nextId();
           lastToolIdRef.current = tid;
@@ -128,25 +129,35 @@ export default function App() {
     [messages],
   );
 
-  return (
-    <div className="app-shell">
-      <Chat
-        messages={messages}
-        traces={traces}
-        busy={busy}
-        onSend={send}
-        ready={ready}
-        readyMsg={readyMsg}
-        suggestions={STARTER_PROMPTS}
-      />
+  const handleNewChat = useCallback(() => {
+    setMessages([]);
+    setTraces([]);
+    setCharts([]);
+    sessionId.current = `web-${generateId()}`;
+  }, []);
 
-      <main className="workspace single-flow">
-        <Canvas
-          charts={charts}
+  return (
+    <div className="app-view">
+      <NavBar onNewChat={handleNewChat} />
+      <div className="app-shell">
+        <Chat
+          messages={messages}
           traces={traces}
-          lastPrompt={latestUserPrompt}
+          busy={busy}
+          onSend={send}
+          ready={ready}
+          readyMsg={readyMsg}
+          suggestions={STARTER_PROMPTS}
         />
-      </main>
+
+        <main className="workspace single-flow">
+          <Canvas
+            charts={charts}
+            traces={traces}
+            lastPrompt={latestUserPrompt}
+          />
+        </main>
+      </div>
     </div>
   );
 }
