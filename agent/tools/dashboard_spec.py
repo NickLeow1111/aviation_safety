@@ -56,6 +56,11 @@ def dashboard_spec(
             }
             for item in normalized
         ],
+        "raw_datasets": {
+            item["name"]: item["rows"]
+            for item in normalized
+            if item["name"] in ("personnel_licences", "aircraft_fleet", "personnel_expiry_trend", "personnel_age_demographic", "aircraft_age_distribution", "aircraft_type_breakdown")
+        },
     }
 
 
@@ -93,6 +98,7 @@ def _infer_domain(title: str | None, focus: str | None, datasets: list[dict[str,
     haystack = " ".join(
         [title or "", focus or ""]
         + [item["name"] for item in datasets]
+        + [str(item.get("title", "")) for item in datasets]
     ).lower()
     if "bird" in haystack:
         return "bird_strike"
@@ -100,6 +106,16 @@ def _infer_domain(title: str | None, focus: str | None, datasets: list[dict[str,
         return "runway_incursion"
     if "amo" in haystack or "audit" in haystack or "maintenance" in haystack:
         return "amo_audit"
+    if "personnel" in haystack or "licence" in haystack or "pilot" in haystack:
+        return "personnel_licences"
+    if "aircraft" in haystack or "registry" in haystack or "fleet" in haystack or "register" in haystack:
+        return "aircraft_registry"
+    if "aerodrome" in haystack or "airfield" in haystack or ("ground" in haystack and ("handling" in haystack or "fod" in haystack)):
+        return "aerodrome_incidents"
+    if "atc" in haystack or "air traffic" in haystack or "separation" in haystack or "sector" in haystack:
+        return "atc_incidents"
+    if "cross" in haystack and "domain" in haystack:
+        return "cross_domain"
     return "occurrence_ops"
 
 
@@ -110,6 +126,16 @@ def _default_title(domain: str) -> str:
         return "Runway Incursion Operations Dashboard"
     if domain == "amo_audit":
         return "AMO Quality Audit Dashboard"
+    if domain == "personnel_licences":
+        return "Personnel Licensing Dashboard"
+    if domain == "aircraft_registry":
+        return "Aircraft Registry Dashboard"
+    if domain == "aerodrome_incidents":
+        return "Aerodrome Incident Dashboard"
+    if domain == "atc_incidents":
+        return "Air Traffic Incident Dashboard"
+    if domain == "cross_domain":
+        return "Cross-Domain Safety Intelligence Overview"
     return "Occurrence Operations Dashboard"
 
 

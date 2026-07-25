@@ -1685,8 +1685,104 @@ table.data tbody tr:hover {
 }
 
 /* =============================================================
-   Dark mode
+   Cross-domain grid cards
    ============================================================= */
+
+.cross-domain-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 16px;
+}
+
+.cross-domain-card {
+  background: var(--panel-soft);
+  border-radius: var(--r-md);
+  padding: 12px;
+  border-left: 4px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cross-domain-card.high {
+  border-left-color: var(--error);
+  background: rgba(255, 69, 58, 0.04);
+}
+
+.cross-domain-card.medium {
+  border-left-color: var(--warning);
+  background: rgba(255, 159, 10, 0.04);
+}
+
+.cross-domain-card.low {
+  border-left-color: var(--success);
+  background: rgba(48, 209, 88, 0.04);
+}
+
+.cross-domain-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.cross-domain-card-head strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.cross-domain-card small {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* =============================================================
+   Domain badge colours for new domains
+   ============================================================= */
+
+.severity-badge.monitor {
+  background: rgba(255, 159, 10, 0.12);
+  color: #b87c00;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.severity-badge.active {
+  background: rgba(48, 209, 88, 0.12);
+  color: #1a9e3e;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* =============================================================
+   Dark mode adjustments for new panels
+   ============================================================= */
+
+[data-theme="dark"] .cross-domain-card.high {
+  background: rgba(255, 69, 58, 0.1);
+}
+
+[data-theme="dark"] .cross-domain-card.medium {
+  background: rgba(255, 159, 10, 0.1);
+}
+
+[data-theme="dark"] .cross-domain-card.low {
+  background: rgba(48, 209, 88, 0.08);
+}
 
 [data-theme="dark"] {
   --bg: #1c1c1e;

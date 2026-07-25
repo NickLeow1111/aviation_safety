@@ -313,12 +313,22 @@ def _infer_occurrence_activity(message: str, recent_results: list[dict[str, Any]
         return "Bird Strike"
     if "runway" in lowered or "incursion" in lowered:
         return "Runway Incursion"
+    if "personnel" in lowered or "licence" in lowered or "pilot" in lowered or "ame" in lowered:
+        return "Personnel Licences"
+    if "aircraft" in lowered or "fleet" in lowered or "register" in lowered or "registry" in lowered:
+        return "Aircraft Registry"
+    if "aerodrome" in lowered or "airfield" in lowered or ("ground" in lowered and "handling" in lowered):
+        return "Aerodrome Incidents"
+    if "atc" in lowered or "air traffic" in lowered or "separation" in lowered:
+        return "ATC Incidents"
+    if "amo" in lowered or "audit" in lowered or "maintenance" in lowered:
+        return "AMO Audit"
 
     for result in reversed(recent_results):
         rows = result.get("rows") or []
         if rows and isinstance(rows[0], dict):
             activity_code = rows[0].get("Activity_Code")
-            if activity_code in {"Bird Strike", "Runway Incursion"}:
+            if activity_code in {"Bird Strike", "Runway Incursion", "Personnel Licences", "Aircraft Registry", "Aerodrome Incidents", "ATC Incidents"}:
                 return str(activity_code)
     return None
 
@@ -349,6 +359,21 @@ def _build_auto_dashboard_args(message: str, recent_results: list[dict[str, Any]
     if activity_code == "Bird Strike":
         title = "Bird Strike Operations Dashboard"
         focus = "Recent bird-strike review"
+    elif activity_code == "Personnel Licences":
+        title = "Personnel Licensing Dashboard"
+        focus = "CAAS PLSD — Licence holder status and renewal tracking"
+    elif activity_code == "Aircraft Registry":
+        title = "Aircraft Registry Dashboard"
+        focus = "Singapore Aircraft Register — fleet composition and maintenance status"
+    elif activity_code == "Aerodrome Incidents":
+        title = "Aerodrome Incident Dashboard"
+        focus = "WSSS Changi Aerodrome — ground handling, FOD, lighting, and fuel-spill monitoring"
+    elif activity_code == "ATC Incidents":
+        title = "Air Traffic Incident Dashboard"
+        focus = "SIN FIR — loss of separation, CNS failures, and coordination gaps"
+    elif activity_code == "AMO Audit":
+        title = "AMO Quality Audit Dashboard"
+        focus = "Aircraft maintenance organisation audit results"
     else:
         title = "Runway Incursion Operations Dashboard"
         focus = "Runway incursion operational picture"
@@ -758,7 +783,7 @@ def _should_short_circuit_occurrence_dashboard(
 ) -> bool:
     if dashboard_emitted or nl2sql_call_count < 5:
         return False
-    return _infer_occurrence_activity(message, []) in {"Bird Strike", "Runway Incursion"}
+    return _infer_occurrence_activity(message, []) in {"Bird Strike", "Runway Incursion", "Personnel Licences", "Aircraft Registry", "Aerodrome Incidents", "ATC Incidents", "AMO Audit"}
 
 
 def _summarize_dashboard_output(output_json: str) -> str:
@@ -827,7 +852,7 @@ def _summarize_dashboard_output(output_json: str) -> str:
     if lookback_note:
         paragraphs.append(f"Lookback note: {lookback_note}")
 
-    sources = _summary_sources(payload.get("datasets"))
+    sources = _summary_sources(payload.get("datasets"), payload.get("domain"))
     if sources:
         paragraphs.append("Sources:\n" + "\n".join(f"- {source}" for source in sources))
 
@@ -871,7 +896,7 @@ def _clean_summary_text(value: Any) -> str:
     return text.strip()
 
 
-def _summary_sources(datasets: Any) -> list[str]:
+def _summary_sources(datasets: Any, domain: str | None = None) -> list[str]:
     if not isinstance(datasets, list):
         return []
     dataset_to_view = {
@@ -882,17 +907,27 @@ def _summary_sources(datasets: Any) -> list[str]:
         "tactical_audit": "dbo.vw_SafetyIntel_TacticalAudit",
         "recent_records": "dbo.vw_SafetyIntel_Occurrences",
     }
+    domain_views = {
+        "personnel_licences": "dbo.vw_SafetyIntel_PersonnelLicences",
+        "aircraft_registry": "dbo.vw_SafetyIntel_AircraftRegister",
+        "aerodrome_incidents": "dbo.vw_SafetyIntel_AerodromeIncidents",
+        "atc_incidents": "dbo.vw_SafetyIntel_ATCIncidents",
+        "cross_domain": "dbo.vw_SafetyIntel_CrossDomainMetrics",
+    }
     sources: list[str] = []
     for dataset in datasets:
         if not isinstance(dataset, dict):
             continue
         name = str(dataset.get("name") or "").strip().lower()
         row_count = dataset.get("row_count")
-        if name not in dataset_to_view:
-            continue
         if isinstance(row_count, (int, float)) and row_count <= 0:
             continue
-        view_name = dataset_to_view[name]
-        if view_name not in sources:
+        # Domain-specific view takes priority
+        view_name = None
+        if domain and name in ("overview", "tracks", "alerts") and domain in domain_views:
+            view_name = domain_views.get(domain)
+        if not view_name:
+            view_name = dataset_to_view.get(name)
+        if view_name and view_name not in sources:
             sources.append(view_name)
     return sources

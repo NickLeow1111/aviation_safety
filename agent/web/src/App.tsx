@@ -14,7 +14,11 @@ const STARTER_PROMPTS = [
   "Show me the runway incursion dashboard",
   "Analyze recent bird strike",
   "Audit aircraft maintenance organisation",
-  "Build me a 2024 safety intelligence dashboard",
+  "Show personnel licences summary",
+  "Aircraft registry overview",
+  "Aerodrome incidents at Changi",
+  "ATC incident analysis",
+  "Cross-domain safety overview",
 ];
 
 const HISTORY_KEY = "sib-chat-history";

@@ -55,6 +55,7 @@ type OpsDashboardSpec = {
   recent_records: Record<string, unknown>[];
   highlights: string[];
   datasets: OpsDataset[];
+  raw_datasets?: Record<string, Record<string, unknown>[]>;
 };
 
 type ExecutiveTable = {
@@ -259,9 +260,14 @@ function OpsDashboardCard({ spec, variant }: { spec: OpsDashboardSpec; variant: 
         ))}
       </div>
 
-      {spec.domain === "amo_audit" ? (
-        <AmoAuditPanel spec={spec} />
-      ) : (
+      {/* Domain-specific panels */}
+      {spec.domain === "amo_audit" && <AmoAuditPanel spec={spec} />}
+      {spec.domain === "personnel_licences" && <PersonnelPanel spec={spec} />}
+      {spec.domain === "aircraft_registry" && <AircraftRegistryPanel spec={spec} />}
+      {spec.domain === "aerodrome_incidents" && <AerodromePanel spec={spec} />}
+      {spec.domain === "atc_incidents" && <ATCPanel spec={spec} />}
+      {spec.domain === "cross_domain" && <CrossDomainPanel spec={spec} />}
+      {!["amo_audit", "personnel_licences", "aircraft_registry", "aerodrome_incidents", "atc_incidents", "cross_domain"].includes(spec.domain) && (
         <OpsStagePanel spec={spec} />
       )}
 
@@ -308,6 +314,10 @@ function OpsDashboardCard({ spec, variant }: { spec: OpsDashboardSpec; variant: 
     </div>
   );
 }
+
+// ============================================================================
+// AMO Audit Panel (existing)
+// ============================================================================
 
 function AmoAuditPanel({ spec }: { spec: OpsDashboardSpec }) {
   return (
@@ -407,6 +417,519 @@ function AmoAuditPanel({ spec }: { spec: OpsDashboardSpec }) {
     </div>
   );
 }
+
+// ============================================================================
+// Personnel Licences Panel (NEW)
+// ============================================================================
+
+function PersonnelPanel({ spec }: { spec: OpsDashboardSpec }) {
+  const personnelData = spec.raw_datasets?.personnel_licences ?? [];
+  return (
+    <div className="ops-stage">
+      <div className="amo-findings-panel">
+        <div className="ops-map-head">
+          <div>
+            <span className="eyebrow">Licence breakdown by type</span>
+            <p className="ops-map-note">
+              {personnelData.length} licence categories — {spec.metrics.find(m => m.label === "Records analyzed")?.value || "2,847"} total active licences.
+            </p>
+          </div>
+          <small>personnel_licences</small>
+        </div>
+        <div className="amo-findings-table">
+          <table className="data findings-table">
+            <thead>
+              <tr>
+                <th>Licence Type</th>
+                <th>Active</th>
+                <th>Pending</th>
+                <th>Suspended</th>
+                <th>Expired (90d)</th>
+                <th>Avg Age</th>
+                <th>M / F</th>
+              </tr>
+            </thead>
+            <tbody>
+              {personnelData.map((row: any, i: number) => (
+                <tr key={i}>
+                  <td className="cell-desc">{row.Licence_Type ?? row.callsign ?? "—"}</td>
+                  <td className="cell-mono">{row.Active ?? "—"}</td>
+                  <td className="cell-mono">{row.Pending_Renewal ?? "—"}</td>
+                  <td className="cell-mono">{row.Suspended ?? "—"}</td>
+                  <td className="cell-mono">{row.Expired_Last_90d ?? "—"}</td>
+                  <td className="cell-mono">{row.Avg_Age ?? "—"}</td>
+                  <td className="cell-mono">{row.Gender_M ?? "—"} / {row.Gender_F ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="ops-side-rail">
+        <div className="ops-side-card intelligence">
+          <div className="ops-side-head">
+            <span className="eyebrow">Licence alerts</span>
+            <small>{spec.alerts.length} active</small>
+          </div>
+          {spec.alerts.length === 0 ? (
+            <p>No active alerts.</p>
+          ) : (
+            <ul className="ops-alert-list">
+              {spec.alerts.map((alert) => (
+                <li key={alert.callsign}>
+                  <div>
+                    <strong>{alert.callsign}</strong>
+                    <small>{alert.flight_level}</small>
+                  </div>
+                  <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ops-side-card tactical">
+          <div className="ops-side-head">
+            <span className="eyebrow">Tactical assessment</span>
+            <small>{spec.tactical_audit?.tail_id ?? "N/A"}</small>
+          </div>
+          {spec.tactical_audit ? (
+            <>
+              <div className="tactical-score">
+                <span>Composite risk score</span>
+                <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
+              </div>
+              <p>{spec.tactical_audit.summary}</p>
+              <ul className="insight-list compact">
+                {spec.tactical_audit.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No tactical note available.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Aircraft Registry Panel (NEW)
+// ============================================================================
+
+function AircraftRegistryPanel({ spec }: { spec: OpsDashboardSpec }) {
+  const fleetData = spec.raw_datasets?.aircraft_fleet ?? [];
+  return (
+    <div className="ops-stage">
+      <div className="amo-findings-panel">
+        <div className="ops-map-head">
+          <div>
+            <span className="eyebrow">Aircraft fleet register</span>
+            <p className="ops-map-note">
+              {fleetData.length} aircraft listed — {spec.metrics.find(m => m.label === "Records analyzed")?.value || "416"} total on register.
+            </p>
+          </div>
+          <small>aircraft_registry</small>
+        </div>
+        <div className="amo-findings-table">
+          <table className="data findings-table">
+            <thead>
+              <tr>
+                <th>Registration</th>
+                <th>Type</th>
+                <th>Operator</th>
+                <th>Year</th>
+                <th>Age</th>
+                <th>Status</th>
+                <th>Next Check</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fleetData.map((row: any, i: number) => (
+                <tr key={i}>
+                  <td className="cell-mono">{row.Registration ?? row.Track_ID ?? "—"}</td>
+                  <td>{row.Aircraft_Type ?? row.callsign ?? "—"}</td>
+                  <td>{row.Operator ?? row.tail_id ?? "—"}</td>
+                  <td className="cell-mono">{row.Year_Manufactured ?? "—"}</td>
+                  <td className="cell-mono">{row.Age_Years ?? "—"} yrs</td>
+                  <td>
+                    <span className={`severity-badge ${(row.Status ?? "Active") === "Active" ? "active" : "monitor"}`}>
+                      {row.Status ?? "—"}
+                    </span>
+                  </td>
+                  <td className="cell-mono">{row.Next_Due_Check ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="ops-side-rail">
+        <div className="ops-side-card intelligence">
+          <div className="ops-side-head">
+            <span className="eyebrow">Fleet alerts</span>
+            <small>{spec.alerts.length} active</small>
+          </div>
+          {spec.alerts.length === 0 ? (
+            <p>No active alerts.</p>
+          ) : (
+            <ul className="ops-alert-list">
+              {spec.alerts.map((alert) => (
+                <li key={alert.callsign}>
+                  <div>
+                    <strong>{alert.callsign}</strong>
+                    <small>{alert.flight_level}</small>
+                  </div>
+                  <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ops-side-card tactical">
+          <div className="ops-side-head">
+            <span className="eyebrow">Tactical assessment</span>
+            <small>{spec.tactical_audit?.tail_id ?? "N/A"}</small>
+          </div>
+          {spec.tactical_audit ? (
+            <>
+              <div className="tactical-score">
+                <span>Composite risk score</span>
+                <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
+              </div>
+              <p>{spec.tactical_audit.summary}</p>
+              <ul className="insight-list compact">
+                {spec.tactical_audit.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No tactical note available.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Aerodrome Incidents Panel (NEW)
+// ============================================================================
+
+function AerodromePanel({ spec }: { spec: OpsDashboardSpec }) {
+  const bounds = getBounds(spec.hotspots);
+
+  return (
+    <div className="ops-stage">
+      <div className="ops-map-panel">
+        <div className="ops-map-head">
+          <div>
+            <span className="eyebrow">Aerodrome Schematic — WSSS Changi</span>
+            <p className="ops-map-note">
+              Incident zones and ground operations tracked for {spec.domain.replace(/_/g, " ")}.
+            </p>
+          </div>
+          <small>aerodrome_incidents</small>
+        </div>
+        <div className="ops-map-surface">
+          <div className="airfield-apron terminal"><span>Terminal apron</span></div>
+          <div className="airfield-apron remote"><span>Remote stands</span></div>
+          <div className="airfield-runway primary"><span>RWY 02 / 20</span></div>
+          <div className="airfield-runway secondary"><span>RWY 11 / 29</span></div>
+          <div className="airfield-taxi alpha" />
+          <div className="airfield-taxi bravo" />
+          <div className="ops-map-label north">North marker</div>
+          <div className="ops-map-label center">Operational schematic</div>
+
+          {spec.hotspots.map((hotspot) => {
+            const position = normalizePoint(hotspot.latitude, hotspot.longitude, bounds);
+            return (
+              <div
+                key={hotspot.zone_id}
+                className="hotspot-node"
+                style={{ left: `${position.left}%`, top: `${position.top}%` }}
+              >
+                <div className={`hotspot-chip ${severityClass(hotspot.severity)}`} title={`${hotspot.label}: ${hotspot.count}`}>
+                  <span>{hotspot.count}</span>
+                </div>
+                <div className="hotspot-caption">{hotspot.label}</div>
+              </div>
+            );
+          })}
+
+          {/* Show incident tracks on the schematic */}
+          {spec.tracks.slice(0, 8).map((track) => {
+            const position = normalizePoint(track.latitude, track.longitude, bounds);
+            return (
+              <div
+                key={track.track_id}
+                className="track-node"
+                style={{
+                  left: `${position.left}%`,
+                  top: `${position.top}%`,
+                  opacity: 0.65,
+                }}
+                title={`${track.callsign} — ${track.flight_level}`}
+              >
+                <div className={`track-marker ${riskClass(track.risk_score)}`} style={{ transform: `rotate(${track.heading_deg}deg)` }} />
+                <div className="track-label">
+                  <strong>{track.callsign}</strong>
+                  <small>{track.flight_level}</small>
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="ops-map-legend">
+            <span><i className="legend-swatch hotspot critical" /> Incident cluster</span>
+            <span><i className="legend-swatch track high" /> Ground incident</span>
+            <span><i className="legend-swatch overlay" /> Aerodrome feature</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="ops-side-rail">
+        <div className="ops-side-card intelligence">
+          <div className="ops-side-head">
+            <span className="eyebrow">Incident alerts</span>
+            <small>{spec.alerts.length} active</small>
+          </div>
+          {spec.alerts.length === 0 ? (
+            <p>No active alerts.</p>
+          ) : (
+            <ul className="ops-alert-list">
+              {spec.alerts.map((alert) => (
+                <li key={alert.callsign}>
+                  <div>
+                    <strong>{alert.callsign}</strong>
+                    <small>{alert.flight_level}</small>
+                  </div>
+                  <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ops-side-card tactical">
+          <div className="ops-side-head">
+            <span className="eyebrow">Tactical audit</span>
+            <small>{spec.tactical_audit?.tail_id ?? "N/A"}</small>
+          </div>
+          {spec.tactical_audit ? (
+            <>
+              <div className="tactical-score">
+                <span>Composite risk score</span>
+                <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
+              </div>
+              <p>{spec.tactical_audit.summary}</p>
+              <ul className="insight-list compact">
+                {spec.tactical_audit.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No tactical note available.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// ATC Incidents Panel (NEW)
+// ============================================================================
+
+function ATCPanel({ spec }: { spec: OpsDashboardSpec }) {
+  const bounds = getBounds(spec.hotspots);
+
+  return (
+    <div className="ops-stage">
+      <div className="ops-map-panel">
+        <div className="ops-map-head">
+          <div>
+            <span className="eyebrow">SIN FIR Airspace Schematic</span>
+            <p className="ops-map-note">
+              ATC incident zones across Singapore FIR — sectors, arrival stacks, and handoff boundaries.
+            </p>
+          </div>
+          <small>atc_incidents</small>
+        </div>
+        <div className="ops-map-surface">
+          <div className="airfield-apron terminal"><span>SIN ACC</span></div>
+          <div className="airfield-apron remote"><span>Approach</span></div>
+          <div className="airfield-runway primary"><span>RWY 02 / 20</span></div>
+          <div className="airfield-runway secondary"><span>RWY 11 / 29</span></div>
+          <div className="airfield-taxi alpha" />
+          <div className="airfield-taxi bravo" />
+          <div className="ops-map-label north">North marker</div>
+          <div className="ops-map-label center">SIN FIR airspace</div>
+
+          {spec.hotspots.map((hotspot) => {
+            const position = normalizePoint(hotspot.latitude, hotspot.longitude, bounds);
+            return (
+              <div
+                key={hotspot.zone_id}
+                className="hotspot-node"
+                style={{ left: `${position.left}%`, top: `${position.top}%` }}
+              >
+                <div className={`hotspot-chip ${severityClass(hotspot.severity)}`} title={`${hotspot.label}: ${hotspot.count}`}>
+                  <span>{hotspot.count}</span>
+                </div>
+                <div className="hotspot-caption">{hotspot.label}</div>
+              </div>
+            );
+          })}
+
+          {spec.tracks.slice(0, 8).map((track) => {
+            const position = normalizePoint(track.latitude, track.longitude, bounds);
+            return (
+              <div
+                key={track.track_id}
+                className="track-node"
+                style={{
+                  left: `${position.left}%`,
+                  top: `${position.top}%`,
+                  opacity: 0.65,
+                }}
+                title={`${track.callsign} — ${track.flight_level}`}
+              >
+                <div className={`track-marker ${riskClass(track.risk_score)}`} style={{ transform: `rotate(${track.heading_deg}deg)` }} />
+                <div className="track-label">
+                  <strong>{track.callsign}</strong>
+                  <small>{track.flight_level}</small>
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="ops-map-legend">
+            <span><i className="legend-swatch hotspot critical" /> Incident cluster</span>
+            <span><i className="legend-swatch track high" /> ATC event</span>
+            <span><i className="legend-swatch overlay" /> Airspace sector</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="ops-side-rail">
+        <div className="ops-side-card intelligence">
+          <div className="ops-side-head">
+            <span className="eyebrow">ATC alerts</span>
+            <small>{spec.alerts.length} active</small>
+          </div>
+          {spec.alerts.length === 0 ? (
+            <p>No active alerts.</p>
+          ) : (
+            <ul className="ops-alert-list">
+              {spec.alerts.map((alert) => (
+                <li key={alert.callsign}>
+                  <div>
+                    <strong>{alert.callsign}</strong>
+                    <small>{alert.flight_level}</small>
+                  </div>
+                  <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="ops-side-card tactical">
+          <div className="ops-side-head">
+            <span className="eyebrow">Tactical assessment</span>
+            <small>{spec.tactical_audit?.tail_id ?? "N/A"}</small>
+          </div>
+          {spec.tactical_audit ? (
+            <>
+              <div className="tactical-score">
+                <span>Composite risk score</span>
+                <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
+              </div>
+              <p>{spec.tactical_audit.summary}</p>
+              <ul className="insight-list compact">
+                {spec.tactical_audit.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No tactical note available.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Cross-Domain Overview Panel (NEW)
+// ============================================================================
+
+function CrossDomainPanel({ spec }: { spec: OpsDashboardSpec }) {
+  return (
+    <div className="ops-stage">
+      <div className="amo-findings-panel">
+        <div className="ops-map-head">
+          <div>
+            <span className="eyebrow">Cross-domain risk register</span>
+            <p className="ops-map-note">
+              Aggregated safety picture across all {spec.metrics.find(m => m.label === "Domains")?.value || "7"} monitored domains.
+            </p>
+          </div>
+          <small>cross_domain</small>
+        </div>
+        <div className="cross-domain-grid">
+          {spec.alerts.map((alert) => (
+            <div key={alert.callsign} className={`cross-domain-card ${riskClass(alert.risk_score)}`}>
+              <div className="cross-domain-card-head">
+                <strong>{alert.callsign}</strong>
+                <span className={`risk-pill ${riskClass(alert.risk_score)}`}>{Math.round(alert.risk_score)}</span>
+              </div>
+              <small>{alert.flight_level}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="ops-side-rail">
+        <div className="ops-side-card tactical">
+          <div className="ops-side-head">
+            <span className="eyebrow">Cross-domain assessment</span>
+            <small>{spec.tactical_audit?.tail_id ?? "N/A"}</small>
+          </div>
+          {spec.tactical_audit ? (
+            <>
+              <div className="tactical-score">
+                <span>Composite risk score</span>
+                <strong>{Math.round(spec.tactical_audit.composite_risk_score)}</strong>
+              </div>
+              <p>{spec.tactical_audit.summary}</p>
+              <ul className="insight-list compact">
+                {spec.tactical_audit.actions.map((action) => (
+                  <li key={action}>{action}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No tactical note available.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// OpsStagePanel (existing — runway, bird strike)
+// ============================================================================
 
 function OpsStagePanel({ spec }: { spec: OpsDashboardSpec }) {
   const bounds = getBounds([...spec.hotspots, ...spec.tracks]);
@@ -528,6 +1051,10 @@ function OpsStagePanel({ spec }: { spec: OpsDashboardSpec }) {
     </div>
   );
 }
+
+// ============================================================================
+// Shared components & helpers
+// ============================================================================
 
 function DataTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
   return (
