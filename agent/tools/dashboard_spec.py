@@ -15,6 +15,7 @@ def dashboard_spec(
     title: str | None = None,
     domain: str | None = None,
     focus: str | None = None,
+    metrics: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     normalized = [_normalize_dataset(item) for item in datasets or []]
     dataset_map = {item["name"]: item for item in normalized if item["name"]}
@@ -29,7 +30,8 @@ def dashboard_spec(
 
     inferred_domain = (domain or _infer_domain(title, focus, normalized)).lower()
     artifact_title = title or _default_title(inferred_domain)
-    metrics = _build_metrics(overview_rows, track_rows, hotspot_rows, alert_rows, recent_rows)
+    # Custom metrics override the auto-computed defaults
+    metrics = metrics if metrics is not None else _build_metrics(overview_rows, track_rows, hotspot_rows, alert_rows, recent_rows)
     tactical_card = _build_tactical_card(tactical_rows, alert_rows)
     highlights = _build_highlights(metrics, alert_rows, tactical_card, recent_rows, inferred_domain)
 
@@ -207,8 +209,10 @@ def _build_highlights(
 ) -> list[str]:
     highlights = []
     metric_map = {item["label"]: item for item in metrics}
+    # Use whatever the first metric value is, or a generic fallback
+    first_value = next((m["value"] for m in metrics if m.get("value")), "N/A")
     highlights.append(
-        f"{metric_map['Vectors']['value']} monitored vectors across the current {domain.replace('_', ' ')} picture."
+        f"{first_value} across the current {domain.replace('_', ' ')} picture."
     )
 
     if alert_rows:

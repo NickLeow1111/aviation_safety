@@ -607,6 +607,13 @@ async def _amo_audit_dashboard_events() -> AsyncIterator[dict]:
         title="AMO Quality Audit Dashboard",
         domain="amo_audit",
         focus="SIA Engineering Line Maintenance — Q2 2026 audit results",
+        metrics=[
+            {"label": "Total findings", "value": "12", "detail": "all severity levels"},
+            {"label": "Critical", "value": "1", "detail": "fire suppression cert"},
+            {"label": "High", "value": "3", "detail": "tool control + AD/SB + parts"},
+            {"label": "Open + in progress", "value": "6", "detail": "still unresolved"},
+            {"label": "Closed", "value": "6", "detail": "50% closure rate"},
+        ],
     )
     for name, output in (
         ("chart_spec", severity_chart),
@@ -643,6 +650,13 @@ async def _personnel_dashboard_events() -> AsyncIterator[dict]:
         title="Personnel Licensing Dashboard",
         domain="personnel_licences",
         focus="CAAS PLSD — Licence holder status and renewal tracking",
+        metrics=[
+            {"label": "Active licences", "value": "2,847", "detail": "all categories"},
+            {"label": "Pilots", "value": "1,634", "detail": "ATPL + CPL + PPL"},
+            {"label": "AMEs", "value": "852", "detail": "B1 + B2 + B3"},
+            {"label": "Expiring 90d", "value": "89", "detail": "all licence types"},
+            {"label": "Suspended", "value": "14", "detail": "across all categories"},
+        ],
     )
     for name, output in (
         ("chart_spec", expiry_chart),
@@ -679,6 +693,13 @@ async def _aircraft_registry_dashboard_events() -> AsyncIterator[dict]:
         title="Aircraft Registry Dashboard",
         domain="aircraft_registry",
         focus="Singapore Aircraft Register — fleet composition and maintenance status",
+        metrics=[
+            {"label": "Total registered", "value": "416", "detail": "all categories"},
+            {"label": "Active commercial", "value": "182", "detail": "passenger fleet"},
+            {"label": "Average age", "value": "8.7 yrs", "detail": "across all airframes"},
+            {"label": "Cargo fleet", "value": "38", "detail": "747F + 777F + A350F"},
+            {"label": "In storage", "value": "78", "detail": "maintenance or parked"},
+        ],
     )
     for name, output in (
         ("chart_spec", age_chart),
@@ -712,6 +733,13 @@ async def _aerodrome_dashboard_events() -> AsyncIterator[dict]:
         title="Aerodrome Incident Dashboard",
         domain="aerodrome_incidents",
         focus="WSSS Changi Aerodrome — ground handling, FOD, lighting, and fuel-spill monitoring",
+        metrics=[
+            {"label": "Incidents YTD", "value": "47", "detail": "up 22% YoY"},
+            {"label": "Ground handling", "value": "18", "detail": "top category"},
+            {"label": "FOD events", "value": "12", "detail": "tyre + metal debris"},
+            {"label": "Active investigations", "value": "6", "detail": "open cases"},
+            {"label": "Mean resolution", "value": "14.3d", "detail": "days to close"},
+        ],
     )
     yield {"type": "tool_call", "data": {"name": "dashboard_spec", "arguments": {"domain": "aerodrome_incidents"}}}
     await asyncio.sleep(0)
@@ -740,6 +768,13 @@ async def _atc_dashboard_events() -> AsyncIterator[dict]:
         title="Air Traffic Incident Dashboard",
         domain="atc_incidents",
         focus="SIN FIR — loss of separation, CNS failures, and coordination gaps",
+        metrics=[
+            {"label": "Incidents YTD", "value": "31", "detail": "up 18% YoY"},
+            {"label": "Loss separation", "value": "5", "detail": "highest severity"},
+            {"label": "Comm failures", "value": "8", "detail": "radio + ATIS + Guard"},
+            {"label": "CNS failures", "value": "5", "detail": "radar + power + VHF"},
+            {"label": "Open investigations", "value": "4", "detail": "across sectors"},
+        ],
     )
     yield {"type": "tool_call", "data": {"name": "dashboard_spec", "arguments": {"domain": "atc_incidents"}}}
     await asyncio.sleep(0)
