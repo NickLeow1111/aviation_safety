@@ -19,5 +19,16 @@ export type ChatMessage =
 
 export type ChartArtifact = {
   id: string;
-  spec: any; // Vega-Lite spec OR table/dashboard artifact
+  spec: any;
+};
+
+export type ChatSession = {
+  id: string;
+  title: string;
+  timestamp: number;
+  messageCount: number;
+  preview: string;
+  messages: ChatMessage[];
+  traces: ToolTrace[];
+  charts: ChartArtifact[];
 };
