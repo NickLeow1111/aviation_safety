@@ -4,6 +4,7 @@ import { Canvas } from "./Canvas";
 import { NavBar } from "./NavBar";
 import { HistoryPanel } from "./HistoryPanel";
 import { SettingsPanel } from "./SettingsPanel";
+import { LoginPage } from "./LoginPage";
 import { streamChat } from "./sse";
 import type { ChartArtifact, ChatMessage, ChatSession, ToolTrace } from "./types";
 
@@ -65,6 +66,8 @@ function saveSettings(settings: { customPrompt: string; theme: Theme }) {
 }
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [ready, setReady] = useState<ReadyState>("checking");
   const [readyMsg, setReadyMsg] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -100,6 +103,19 @@ export default function App() {
         else { setReady("error"); setReadyMsg(body.detail ?? `HTTP ${r.status}`); }
       })
       .catch((e) => { setReady("error"); setReadyMsg(String(e)); });
+  }, []);
+
+  const handleLogin = useCallback((user: { name: string; role: string }) => {
+    setUser(user);
+    setLoggedIn(true);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setUser(null);
+    setLoggedIn(false);
+    setMessages([]);
+    setTraces([]);
+    setCharts([]);
   }, []);
 
   const send = async (text: string) => {
@@ -205,13 +221,15 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  return (
+  return loggedIn ? (
     <div className="app-view">
       <NavBar
         onNewChat={handleNewChat}
         onHistory={() => { setShowHistory((v) => !v); setShowSettings(false); }}
         onSettings={() => { setShowSettings((v) => !v); setShowHistory(false); }}
         historyCount={chatHistory.length}
+        user={user}
+        onLogout={handleLogout}
       />
 
       {showHistory && (
@@ -253,5 +271,7 @@ export default function App() {
         </main>
       </div>
     </div>
+  ) : (
+    <LoginPage onLogin={handleLogin} />
   );
 }
