@@ -1903,15 +1903,14 @@ table.data tbody tr:hover {
   min-height: 100vh;
 }
 
-/* ── Left: Hero Image ── */
+/* ── Left: Hero Image — full bleed ── */
 
 .login-hero {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   background: linear-gradient(135deg, #f0f3fa 0%, #e8edf5 50%, #f0f3fa 100%);
-  padding: 40px;
   position: relative;
   overflow: hidden;
 }
@@ -1938,28 +1937,17 @@ table.data tbody tr:hover {
   right: -50px;
 }
 
-.login-hero-content {
-  position: relative;
-  z-index: 1;
-  max-width: 520px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 .login-hero-image-frame {
+  flex: 1;
   width: 100%;
-  max-width: 480px;
-  aspect-ratio: 4 / 3;
-  border-radius: 20px;
+  height: 100%;
   overflow: hidden;
   background: #f0ece8;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
-  margin-bottom: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 1;
 }
 
 .login-hero-img {
@@ -1975,7 +1963,7 @@ table.data tbody tr:hover {
   justify-content: center;
   width: 100%;
   height: 100%;
-  padding: 32px;
+  padding: 40px;
 }
 
 .login-hero-placeholder-inner {
@@ -2003,26 +1991,6 @@ table.data tbody tr:hover {
   background: rgba(27, 42, 74, 0.06);
   padding: 1px 6px;
   border-radius: 4px;
-}
-
-.login-hero-text {
-  text-align: center;
-}
-
-.login-hero-text h1 {
-  font-size: 24px;
-  font-weight: 800;
-  color: #1d1d1f;
-  margin: 0 0 6px;
-  letter-spacing: -0.5px;
-}
-
-.login-hero-text p {
-  font-size: 13px;
-  color: #86868b;
-  margin: 0;
-  line-height: 1.5;
-  max-width: 360px;
 }
 
 /* ── Right: Login Panel ── */
@@ -2286,13 +2254,8 @@ table.data tbody tr:hover {
   background: radial-gradient(circle, rgba(255, 255, 255, 0.02) 0%, transparent 70%);
 }
 
-[data-theme="dark"] .login-hero-text h1 {
-  color: #f5f5f7;
-}
-
 [data-theme="dark"] .login-hero-image-frame {
   background: #2c2c2e;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
 }
 
 [data-theme="dark"] .login-panel {
@@ -2367,17 +2330,9 @@ table.data tbody tr:hover {
   }
 
   .login-hero {
-    padding: 32px 24px;
-    min-height: auto;
-  }
-
-  .login-hero-image-frame {
-    max-width: 100%;
-    aspect-ratio: 16 / 9;
-  }
-
-  .login-hero-text h1 {
-    font-size: 20px;
+    padding: 0;
+    min-height: 300px;
+    max-height: 40vh;
   }
 
   .login-panel {

@@ -38,49 +38,33 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="login-page">
       <div className="login-split">
-        {/* Left — Hero image placeholder */}
+        {/* Left — Hero image spanning full panel */}
         <div className="login-hero">
-          <div className="login-hero-content">
-            <div className="login-hero-image-frame">
-              {/* 
-                ─────────────────────────────────────────────
-                IMAGE PLACEHOLDER
-                Upload your landing page graphic to:
-                  agent/web/public/login-hero.png
-                or
-                  agent/static/login-hero.png
-                Then replace the src below.
-                ─────────────────────────────────────────────
-              */}
-              <img
-                src="/login-hero.png"
-                alt="Aviation Safety"
-                className="login-hero-img"
-                style={{ display: imgError ? "none" : "block" }}
-                onError={() => setImgError(true)}
-                onLoad={() => setImgError(false)}
-              />
-              <div className="login-hero-placeholder" style={{ display: imgError ? "flex" : "none" }}>
-                <div className="login-hero-placeholder-inner">
-                  <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-                    <rect x="8" y="8" width="48" height="48" rx="12" stroke="#1B2A4A" strokeWidth="2" strokeDasharray="4 4" fill="none" opacity="0.4"/>
-                    <path d="M32 24v16M24 32h16" stroke="#1B2A4A" strokeWidth="2" strokeLinecap="round" opacity="0.4"/>
-                    <path d="M20 44l8-12 6 8 6-12 8 16" stroke="#1B2A4A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.3"/>
-                    <circle cx="26" cy="26" r="4" stroke="#1B2A4A" strokeWidth="2" opacity="0.3"/>
-                  </svg>
-                  <p className="login-hero-placeholder-text">
-                    Add your landing page graphic
-                  </p>
-                  <p className="login-hero-placeholder-hint">
-                    Save as <code>agent/web/public/login-hero.png</code><br />
-                    Recommended: 800×600px
-                  </p>
-                </div>
+          <div className="login-hero-image-frame">
+            <img
+              src="/login-hero.png"
+              alt="Aviation Safety"
+              className="login-hero-img"
+              style={{ display: imgError ? "none" : "block" }}
+              onError={() => setImgError(true)}
+              onLoad={() => setImgError(false)}
+            />
+            <div className="login-hero-placeholder" style={{ display: imgError ? "flex" : "none" }}>
+              <div className="login-hero-placeholder-inner">
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                  <rect x="8" y="8" width="48" height="48" rx="12" stroke="#1B2A4A" strokeWidth="2" strokeDasharray="4 4" fill="none" opacity="0.4"/>
+                  <path d="M32 24v16M24 32h16" stroke="#1B2A4A" strokeWidth="2" strokeLinecap="round" opacity="0.4"/>
+                  <path d="M20 44l8-12 6 8 6-12 8 16" stroke="#1B2A4A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.3"/>
+                  <circle cx="26" cy="26" r="4" stroke="#1B2A4A" strokeWidth="2" opacity="0.3"/>
+                </svg>
+                <p className="login-hero-placeholder-text">
+                  Add your landing page graphic
+                </p>
+                <p className="login-hero-placeholder-hint">
+                  Save as <code>agent/web/public/login-hero.png</code><br />
+                  Recommended: 800×600px
+                </p>
               </div>
-            </div>
-            <div className="login-hero-text">
-              <h1>Safety Intelligence Bot</h1>
-              <p>AI-powered safety analysis for the Civil Aviation Authority of Singapore</p>
             </div>
           </div>
         </div>
