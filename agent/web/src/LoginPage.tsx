@@ -15,6 +15,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState("");
   const [showDemo, setShowDemo] = useState(false);
   const [error, setError] = useState("");
+  const [imgLoaded, setImgLoaded] = useState(true);
+  const [imgError, setImgError] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,18 +56,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 src="/login-hero.png"
                 alt="Aviation Safety"
                 className="login-hero-img"
-                onError={(e) => {
-                  // Fallback placeholder shown when image hasn't been uploaded yet
-                  const target = e.currentTarget;
-                  target.style.display = "none";
-                  const parent = target.parentElement;
-                  if (parent) {
-                    const placeholder = parent.querySelector(".login-hero-placeholder") as HTMLElement;
-                    if (placeholder) placeholder.style.display = "flex";
-                  }
-                }}
+                style={{ display: imgError ? "none" : "block" }}
+                onError={() => setImgError(true)}
+                onLoad={() => setImgError(false)}
               />
-              <div className="login-hero-placeholder" style={{ display: "flex" }}>
+              <div className="login-hero-placeholder" style={{ display: imgError ? "flex" : "none" }}>
                 <div className="login-hero-placeholder-inner">
                   <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
                     <rect x="8" y="8" width="48" height="48" rx="12" stroke="#1B2A4A" strokeWidth="2" strokeDasharray="4 4" fill="none" opacity="0.4"/>
