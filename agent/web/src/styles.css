@@ -1954,7 +1954,7 @@ table.data tbody tr:hover {
   aspect-ratio: 4 / 3;
   border-radius: 20px;
   overflow: hidden;
-  background: #ffffff;
+  background: #f0ece8;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
   margin-bottom: 32px;
   display: flex;
@@ -2291,7 +2291,7 @@ table.data tbody tr:hover {
 }
 
 [data-theme="dark"] .login-hero-image-frame {
-  background: #1c1c1e;
+  background: #2c2c2e;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
 }
 
