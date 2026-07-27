@@ -56,11 +56,13 @@ export function Chat({
       </div>
 
       <div className="suggestion-row">
-        {suggestions.map((suggestion) => (
-          <button key={suggestion} type="button" onClick={() => onSend(suggestion)} disabled={busy}>
-            {suggestion}
-          </button>
-        ))}
+        <div className="suggestion-scroll">
+          {suggestions.map((suggestion) => (
+            <button key={suggestion} type="button" onClick={() => onSend(suggestion)} disabled={busy}>
+              {suggestion}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="messages" ref={scrollRef}>

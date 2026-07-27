@@ -15,7 +15,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [password, setPassword] = useState("");
   const [showDemo, setShowDemo] = useState(false);
   const [error, setError] = useState("");
-  const [imgLoaded, setImgLoaded] = useState(true);
   const [imgError, setImgError] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
