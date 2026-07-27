@@ -327,13 +327,32 @@ small {
   display: flex;
   gap: 4px;
   overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--navy-light) transparent;
+  /* Fade at right edge to hint overflow — only shows when content scrolls */
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
 }
 
 .suggestion-scroll::-webkit-scrollbar {
-  display: none;
+  height: 3px;
+}
+
+.suggestion-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.suggestion-scroll::-webkit-scrollbar-thumb {
+  background: var(--navy-light);
+  border-radius: 2px;
+  opacity: 0.6;
+}
+
+.suggestion-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--navy);
 }
 
 .suggestion-scroll button {
