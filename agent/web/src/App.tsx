@@ -1,143 +1,121 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Chat } from "./Chat";
 import { Canvas } from "./Canvas";
+import { NavBar } from "./NavBar";
+import { HistoryPanel } from "./HistoryPanel";
+import { SettingsPanel } from "./SettingsPanel";
+import { LoginPage } from "./LoginPage";
 import { streamChat } from "./sse";
-import type { ChartArtifact, ChatMessage, ToolTrace } from "./types";
+import type { ChartArtifact, ChatMessage, ChatSession, ToolTrace } from "./types";
 
 type ReadyState = "checking" | "ready" | "error";
-type WorkspaceMode = "repository" | "occurrences" | "aircraft";
+type Theme = "light" | "dark";
 
 const STARTER_PROMPTS = [
   "Show me the runway incursion dashboard",
   "Analyze recent bird strike",
-  "Build me a 2024 safety intelligence dashboard",
+  "Audit aircraft maintenance organisation",
+  "Show personnel licences summary",
+  "Aircraft registry overview",
+  "Aerodrome incidents at Changi",
+  "ATC incident analysis",
+  "Cross-domain safety overview",
 ];
+
+const HISTORY_KEY = "sib-chat-history";
+const SETTINGS_KEY = "sib-settings";
+const MAX_HISTORY = 30;
 
 function parseMaybeJSON(v: unknown): unknown {
   if (typeof v !== "string") return v;
-  try {
-    return JSON.parse(v);
-  } catch {
-    return v;
-  }
+  try { return JSON.parse(v); } catch { return v; }
 }
 
-// crypto.randomUUID() is only defined in secure contexts (HTTPS or http://localhost).
-// Fall back to a non-crypto id so the app still works over plain HTTP (e.g. while
-// the gateway is on a temporary HTTP listener before TLS is configured).
 function generateId(): string {
   const c = globalThis.crypto;
-  if (c && typeof c.randomUUID === "function") {
-    return c.randomUUID();
-  }
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function isTableArtifact(spec: unknown): spec is { type: "table"; rows?: unknown[] } {
-  return Boolean(spec && typeof spec === "object" && (spec as { type?: string }).type === "table");
+function loadHistory(): ChatSession[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
 }
 
-function countArtifactRows(charts: ChartArtifact[]): number {
-  return charts.reduce((total, chart) => {
-    if (isTableArtifact(chart.spec)) {
-      return total + (Array.isArray(chart.spec.rows) ? chart.spec.rows.length : 0);
+function saveHistory(history: ChatSession[]) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+  } catch { /* quota exceeded — silently ignore */ }
+}
+
+function loadSettings(): { customPrompt: string; theme: Theme } {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { customPrompt: parsed.customPrompt || "", theme: parsed.theme || "light" };
     }
-    const values = (chart.spec as { data?: { values?: unknown[] } })?.data?.values;
-    return total + (Array.isArray(values) ? values.length : 0);
-  }, 0);
+  } catch { /* ignore */ }
+  return { customPrompt: "", theme: "light" };
 }
 
-function inferArtifactTitle(spec: unknown, index: number): string {
-  if (spec && typeof spec === "object" && typeof (spec as { title?: unknown }).title === "string") {
-    return (spec as { title: string }).title;
-  }
-  if (isTableArtifact(spec)) return `Table ${index + 1}`;
-  return `Visual ${index + 1}`;
-}
-
-function extractHighlights(text: string, charts: ChartArtifact[]): string[] {
-  const cleaned = text
-    .split("\n")
-    .map((line) => line.replace(/^[-*\d.\s]+/, "").trim())
-    .filter((line) => line && !line.toLowerCase().startsWith("sources:"));
-
-  if (cleaned.length > 0) {
-    return cleaned.slice(0, 3);
-  }
-
-  if (charts.length > 0) {
-    return charts
-      .slice(-3)
-      .reverse()
-      .map((chart, index) => `${inferArtifactTitle(chart.spec, charts.length - 1 - index)} ready for review.`);
-  }
-
-  return [
-    "Start with a dashboard prompt to populate the operational picture.",
-    "Use the assistant rail to stack follow-up questions against the same session.",
-    "Tool traces refresh per prompt so the current run is easier to inspect.",
-  ];
-}
-
-function inferWorkspaceMode(prompt: string, charts: ChartArtifact[]): WorkspaceMode {
-  const chartHints = charts
-    .map((chart) => {
-      const spec = chart.spec as { title?: string; domain?: string };
-      return [spec?.title, spec?.domain].filter(Boolean).join(" ");
-    })
-    .join(" ")
-    .toLowerCase();
-  const haystack = `${prompt} ${chartHints}`.toLowerCase();
-
-  if (/(bird|runway|incursion|occurrence|occurrences|surveillance|finding|findings|audit|safety intelligence)/.test(haystack)) {
-    return "occurrences";
-  }
-  if (/(document|documents|repository|manual|guidance|change mgmt|reference)/.test(haystack)) {
-    return "repository";
-  }
-  if (/(aircraft|tail|callsign|track|tracks|flight|fleet|360|vector)/.test(haystack)) {
-    return "aircraft";
-  }
-  return "occurrences";
-}
-
-function StatCard({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="stat-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </div>
-  );
+function saveSettings(settings: { customPrompt: string; theme: Theme }) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
 }
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [ready, setReady] = useState<ReadyState>("checking");
   const [readyMsg, setReadyMsg] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [traces, setTraces] = useState<ToolTrace[]>([]);
   const [charts, setCharts] = useState<ChartArtifact[]>([]);
   const [busy, setBusy] = useState(false);
-  const sessionId = useMemo(() => `web-${generateId()}`, []);
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>(loadHistory);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState(() => loadSettings().customPrompt);
+  const [theme, setTheme] = useState<Theme>(() => loadSettings().theme);
+  const sessionId = useRef(`web-${generateId()}`);
   const seqRef = useRef(0);
   const nextId = () => `${Date.now()}-${++seqRef.current}`;
 
+  // Persist settings on change
+  useEffect(() => { saveSettings({ customPrompt, theme }); }, [customPrompt, theme]);
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  // Persist history on change
+  useEffect(() => { saveHistory(chatHistory); }, [chatHistory]);
+
+  // Ready check
   useEffect(() => {
     fetch("/readyz")
       .then(async (r) => {
         const body = await r.json().catch(() => ({}));
-        if (r.ok) {
-          setReady("ready");
-          setReadyMsg(body.agent_name ?? "ready");
-        } else {
-          setReady("error");
-          setReadyMsg(body.detail ?? `HTTP ${r.status}`);
-        }
+        if (r.ok) { setReady("ready"); setReadyMsg(body.agent_name ?? "ready"); }
+        else { setReady("error"); setReadyMsg(body.detail ?? `HTTP ${r.status}`); }
       })
-      .catch((e) => {
-        setReady("error");
-        setReadyMsg(String(e));
-      });
+      .catch((e) => { setReady("error"); setReadyMsg(String(e)); });
+  }, []);
+
+  const handleLogin = useCallback((user: { name: string; role: string }) => {
+    setUser(user);
+    setLoggedIn(true);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setUser(null);
+    setLoggedIn(false);
+    setMessages([]);
+    setTraces([]);
+    setCharts([]);
   }, []);
 
   const send = async (text: string) => {
@@ -152,172 +130,148 @@ export default function App() {
     const lastToolIdRef = { current: "" };
 
     try {
-      for await (const ev of streamChat(sessionId, text)) {
+      for await (const ev of streamChat(sessionId.current, text)) {
         if (ev.type === "tool_call") {
           const tid = nextId();
           lastToolIdRef.current = tid;
-          setTraces((ts) => [
-            ...ts,
-            { id: tid, name: ev.data.name, arguments: ev.data.arguments, status: "running" },
-          ]);
-          setMessages((m) =>
-            m.map((x) =>
-              x.id === botId && x.role === "bot"
-                ? { ...x, toolIds: [...x.toolIds, tid] }
-                : x,
-            ),
-          );
+          setTraces((ts) => [...ts, { id: tid, name: ev.data.name, arguments: ev.data.arguments, status: "running" }]);
+          setMessages((m) => m.map((x) => x.id === botId && x.role === "bot" ? { ...x, toolIds: [...x.toolIds, tid] } : x));
         } else if (ev.type === "tool_result") {
           const tid = lastToolIdRef.current;
           const parsed = parseMaybeJSON(ev.data.output);
-          setTraces((ts) =>
-            ts.map((t) =>
-              t.id === tid ? { ...t, output: parsed, status: "done" } : t,
-            ),
-          );
+          setTraces((ts) => ts.map((t) => t.id === tid ? { ...t, output: parsed, status: "done" } : t));
           if ((ev.data.name === "chart_spec" || ev.data.name === "dashboard_spec") && parsed && typeof parsed === "object") {
             setCharts((c) => [...c, { id: nextId(), spec: parsed }]);
           }
         } else if (ev.type === "final") {
-          setMessages((m) =>
-            m.map((x) =>
-              x.id === botId && x.role === "bot" ? { ...x, text: ev.data } : x,
-            ),
-          );
+          setMessages((m) => m.map((x) => x.id === botId && x.role === "bot" ? { ...x, text: ev.data } : x));
         } else if (ev.type === "error") {
-          setMessages((m) => [
-            ...m.filter((x) => x.id !== botId),
-            { id: nextId(), role: "error", text: ev.data },
-          ]);
+          setMessages((m) => [...m.filter((x) => x.id !== botId), { id: nextId(), role: "error", text: ev.data }]);
         }
       }
     } catch (e) {
-      setMessages((m) => [
-        ...m.filter((x) => x.id !== botId),
-        { id: nextId(), role: "error", text: String(e) },
-      ]);
+      setMessages((m) => [...m.filter((x) => x.id !== botId), { id: nextId(), role: "error", text: String(e) }]);
     } finally {
       setBusy(false);
     }
   };
 
   const latestUserPrompt = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "user")?.text ?? "Awaiting analyst brief",
+    () => [...messages].reverse().find((m) => m.role === "user")?.text ?? "Awaiting analyst brief",
     [messages],
   );
-  const latestNarrative = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "bot")?.text ?? "",
-    [messages],
-  );
-  const chartCount = charts.filter((chart) => !isTableArtifact(chart.spec)).length;
-  const tableCount = charts.length - chartCount;
-  const recordCount = countArtifactRows(charts);
-  const recentTitles = charts
-    .slice(-4)
-    .reverse()
-    .map((chart, index) => inferArtifactTitle(chart.spec, charts.length - 1 - index));
-  const highlights = useMemo(() => extractHighlights(latestNarrative, charts), [latestNarrative, charts]);
-  const workspaceMode = useMemo(() => inferWorkspaceMode(latestUserPrompt, charts), [latestUserPrompt, charts]);
 
-  // Keep the right-hand workspace blank until the analyst starts a conversation,
-  // so first launch shows only the assistant chat on the left.
-  const hasStarted = messages.length > 0 || charts.length > 0;
+  // Save current session to history and start fresh
+  const handleNewChat = useCallback(() => {
+    if (messages.length > 1) {
+      const firstUserMsg = messages.find((m) => m.role === "user");
+      const lastMsg = messages[messages.length - 1];
+      const preview = lastMsg?.role === "bot" ? lastMsg.text.slice(0, 100) : "";
+      const session: ChatSession = {
+        id: sessionId.current,
+        title: firstUserMsg?.text.slice(0, 60) || "New Chat",
+        timestamp: Date.now(),
+        messageCount: messages.filter((m) => m.role === "user" || m.role === "bot").length,
+        preview,
+        messages,
+        traces,
+        charts,
+      };
+      setChatHistory((prev) => {
+        const updated = [session, ...prev];
+        return updated.slice(0, MAX_HISTORY);
+      });
+    }
+    setMessages([]);
+    setTraces([]);
+    setCharts([]);
+    sessionId.current = `web-${generateId()}`;
+    setShowHistory(false);
+    setShowSettings(false);
+  }, [messages, traces, charts]);
 
-  return (
-    <div className="app-shell">
-      <Chat
-        messages={messages}
-        traces={traces}
-        busy={busy}
-        onSend={send}
-        ready={ready}
-        readyMsg={readyMsg}
-        suggestions={STARTER_PROMPTS}
+  // Restore a session from history
+  const handleHistorySelect = useCallback((session: ChatSession) => {
+    setMessages(session.messages);
+    setTraces(session.traces);
+    setCharts(session.charts);
+    sessionId.current = `web-${generateId()}`;
+    setShowHistory(false);
+  }, []);
+
+  // Clear all history
+  const handleClearHistory = useCallback(() => {
+    setChatHistory([]);
+  }, []);
+
+  // Toggle theme
+  const handleThemeToggle = useCallback(() => {
+    setTheme((t) => t === "light" ? "dark" : "light");
+  }, []);
+
+  // Close panels on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowHistory(false);
+        setShowSettings(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  return loggedIn ? (
+    <div className="app-view">
+      <NavBar
+        onNewChat={handleNewChat}
+        onHistory={() => { setShowHistory((v) => !v); setShowSettings(false); }}
+        onSettings={() => { setShowSettings((v) => !v); setShowHistory(false); }}
+        historyCount={chatHistory.length}
+        user={user}
+        onLogout={handleLogout}
       />
 
-      <main className="workspace">
-        {hasStarted && (
-          <>
-            <header className="workspace-header">
-              <div>
-                <span className="workspace-kicker">Aviation Safety Risk Dashboard</span>
-                <h1>Aviation Safety Intelligence</h1>
-                <p>
-                  A cleaner analyst workspace for chaining Synapse-backed questions into a single
-                  operational picture.
-                </p>
-              </div>
+      {showHistory && (
+        <HistoryPanel
+          history={chatHistory}
+          onSelect={handleHistorySelect}
+          onClose={() => setShowHistory(false)}
+          onClear={handleClearHistory}
+        />
+      )}
 
-              <div className="workspace-controls">
-                <span className={`status-pill ${ready === "ready" ? "ok" : ready === "error" ? "err" : ""}`}>
-                  {ready === "checking" ? "Link check" : ready === "ready" ? readyMsg : readyMsg || "Unavailable"}
-                </span>
-                <div className="mode-pills" aria-hidden="true">
-                  <span className={workspaceMode === "repository" ? "active" : ""}>Repository</span>
-                  <span className={workspaceMode === "occurrences" ? "active" : ""}>Occurrences</span>
-                  <span className={workspaceMode === "aircraft" ? "active" : ""}>Aircraft 360</span>
-                </div>
-              </div>
-            </header>
+      {showSettings && (
+        <SettingsPanel
+          customPrompt={customPrompt}
+          theme={theme}
+          onPromptChange={setCustomPrompt}
+          onThemeToggle={handleThemeToggle}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
 
-            <section className="hero-banner">
-              <div className="hero-copy">
-                <span className="eyebrow">Live brief</span>
-                <h2>{latestUserPrompt}</h2>
-                <p>
-                  The workspace now prioritises a single spotlight visualization, a compact
-                  intelligence rail, and a lower analytics deck so follow-up questions feel cumulative
-                  instead of stacked like chat logs.
-                </p>
-              </div>
+      <div className="app-shell">
+        <Chat
+          messages={messages}
+          traces={traces}
+          busy={busy}
+          onSend={send}
+          ready={ready}
+          readyMsg={readyMsg}
+          suggestions={STARTER_PROMPTS}
+        />
 
-              <div className="hero-cards">
-                <div className="hero-note">
-                  <span>Mission profile</span>
-                  <strong>{charts.length > 0 ? "Multi-panel analysis" : "Waiting for first analysis"}</strong>
-                  <small>{busy ? "Agent is assembling the next view." : "Ask for a dashboard or a focused drill-down."}</small>
-                </div>
-                <div className="hero-note accent">
-                  <span>Recent outputs</span>
-                  <strong>{recentTitles[0] ?? "No visuals yet"}</strong>
-                  <small>{recentTitles[1] ?? "Only the current prompt's artifacts stay on the canvas."}</small>
-                </div>
-              </div>
-            </section>
-
-            <section className="stats-strip">
-              <StatCard
-                label="Visuals"
-                value={String(charts.length).padStart(2, "0")}
-                detail={`${chartCount} charts · ${tableCount} tables`}
-              />
-              <StatCard
-                label="Records in view"
-                value={String(recordCount).padStart(2, "0")}
-                detail="Estimated from rendered artifacts"
-              />
-              <StatCard
-                label="Tool activity"
-                value={String(traces.length).padStart(2, "0")}
-                detail={busy ? "Current run in progress" : "Function calls for this prompt"}
-              />
-              <StatCard
-                label="Assistant memo"
-                value={highlights.length > 0 ? String(highlights.length).padStart(2, "0") : "00"}
-                detail="Key takeaways pinned to the right rail"
-              />
-            </section>
-
-            <Canvas
-              charts={charts}
-              traces={traces}
-              summaryText={latestNarrative}
-              lastPrompt={latestUserPrompt}
-              highlights={highlights}
-            />
-          </>
-        )}
-      </main>
+        <main className="workspace single-flow">
+          <Canvas
+            charts={charts}
+            traces={traces}
+            lastPrompt={latestUserPrompt}
+          />
+        </main>
+      </div>
     </div>
+  ) : (
+    <LoginPage onLogin={handleLogin} />
   );
 }
