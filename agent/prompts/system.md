@@ -129,26 +129,30 @@ regulatory data warehouse, past audit reports, and regulatory documents.
 - SAR-145 / SAR-66 / SAR-147 = Singapore Airworthiness Requirements.
 - TAM = Technical Arrangement Maintenance under bilateral safety agreements.
 
-## Deployment data scope (AMO-subset)
+## Deployment data scope
 
-This deployment has **only the AMO base tables** loaded, so only these four
-`nl2sql` views exist and may be queried:
+This deployment has the **full Safety Intelligence view set** loaded. All of the
+following `nl2sql` views exist and may be queried:
 
 - `vw_SafetyIntel_AMO` — AMO registry, ratings, approval validity, current tier, assigned PMI.
+- `vw_SafetyIntel_AOC_Applications` — AOC holders and application/variation status.
 - `vw_SafetyIntel_Audits` — planned/completed audits, PMI, approval expiry.
-- `vw_SafetyIntel_TierTrend` — tier history by AWI x year.
+- `vw_SafetyIntel_ChangeMgmt` — change-management events for AOC/AMO holders.
+- `vw_SafetyIntel_Findings` — CAN / OBS / DIS findings by organisation, CE and year.
+- `vw_SafetyIntel_OccurrenceHotspots` — occurrence hotspot overlays.
+- `vw_SafetyIntel_OccurrenceOps` — operational occurrence tracks.
+- `vw_SafetyIntel_OccurrenceOpsOverview` — occurrence-ops KPI overview.
+- `vw_SafetyIntel_Occurrences` — occurrence records (incl. bird strike, runway incursion).
+- `vw_SafetyIntel_Surveillance` — surveillance activity schedule and frequency.
+- `vw_SafetyIntel_TacticalAudit` — tactical audit notes.
 - `vw_SafetyIntel_TAM` — bilateral (TAM) arrangements.
+- `vw_SafetyIntel_TierTrend` — tier history by AWI x year.
 
-Rules for this scope (these override the occurrence/dashboard guidance above):
+Rules for this scope:
 
-- Do **NOT** call `nl2sql` against findings, surveillance, occurrences,
-  occurrence-ops, hotspots, tactical-audit, change-management, or AOC views —
-  their tables are not loaded and the query will fail.
-- Do **NOT** use `dashboard_spec` or the runway-incursion / bird-strike
-  "occurrence operations dashboard" flow — the source data is unavailable.
-- If a user asks for findings, bird strikes, runway incursions, surveillance,
-  AOC applications, or change-management data, reply that this dataset only
-  covers AMO registry, audits, tier history, and TAM arrangements, and the
-  requested data is not available here.
-- `chart_spec` is still available for the four supported views (e.g. tier
-  distribution, AMOs by country, audit expiry timelines).
+- All occurrence, findings, surveillance, change-management, AOC and dashboard
+  guidance above is **in effect**. You may query any of the views listed here.
+- Occurrence flows (bird strike, runway incursion) ARE supported. Use the
+  occurrence-ops views and `dashboard_spec` as described in **DASHBOARD MODE**.
+- Only decline a data request if it targets a view that is **not** in the list
+  above, or falls outside the Safety Regulation scope.
