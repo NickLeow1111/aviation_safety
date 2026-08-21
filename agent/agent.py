@@ -23,6 +23,7 @@ from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 
 from tools import chart_spec, dashboard_spec, doc_search, run_nl2sql
+from tools import schema_catalog
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +119,10 @@ def _dispatch_tool(
             ))
         if name == "doc_search":
             return json.dumps(doc_search(args.get("query", "")))
+        if name == "get_schema":
+            return json.dumps(
+                schema_catalog.get_schema_payload(args.get("filter"))
+            )
         return json.dumps({"error": f"unknown tool: {name}"})
     except Exception as e:  # noqa: BLE001
         log.exception("tool %s failed", name)

@@ -14,6 +14,7 @@ agent.py.
 """
 
 import os
+import sys
 from pathlib import Path
 
 from azure.ai.projects import AIProjectClient
@@ -31,6 +32,9 @@ from dotenv import load_dotenv
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 AGENT_ROOT = SCRIPT_DIR.parent
+# Allow imports from agent/tools regardless of CWD.
+if str(AGENT_ROOT) not in sys.path:
+    sys.path.insert(0, str(AGENT_ROOT))
 
 load_dotenv(AGENT_ROOT / ".env.foundry")
 load_dotenv(AGENT_ROOT / ".env")
@@ -51,11 +55,43 @@ AGENT_NAME = os.environ.get("FOUNDRY_AGENT_NAME", "safety-intelligence-bot")
 SEARCH_INDEX = os.environ.get("SEARCH_INDEX", "safety-docs")
 
 PROMPTS = AGENT_ROOT / "prompts"
-INSTRUCTIONS = (
-    (PROMPTS / "system.md").read_text()
-    + "\n\n---\n"
-    + (PROMPTS / "nl2sql_examples.md").read_text()
-)
+
+
+def _build_instructions() -> str:
+    """system.md + live schema reference + dynamic scope + few-shot examples.
+
+    When Synapse is reachable at agent-creation time, the static
+    'Deployment data scope' section is REPLACED with what is actually
+    deployed (view list + column reference), so the prompt can never drift
+    from the database. Falls back to the static text when unreachable.
+    """
+    from tools import schema_catalog
+
+    system_text = (PROMPTS / "system.md").read_text()
+
+    marker = "\n## Deployment data scope"
+    base, sep, _static_scope = system_text.partition(marker)
+
+    live_scope = schema_catalog.format_scope_section()
+    live_ref = schema_catalog.format_schema_reference()
+    if sep and live_scope and live_ref:
+        view_count = len(schema_catalog.get_schemas() or {})
+        system_text = base + "\n" + live_scope + "\n" + live_ref
+        print(f"Injected LIVE deployment scope ({view_count} views) into instructions.")
+    else:
+        print(
+            "WARNING: live schema unavailable — keeping STATIC deployment "
+            "scope from system.md. Re-run after Synapse is reachable."
+        )
+
+    return (
+        system_text
+        + "\n\n---\n\n"
+        + (PROMPTS / "nl2sql_examples.md").read_text()
+    )
+
+
+INSTRUCTIONS = _build_instructions()
 
 # ---------------------------------------------------------------------------
 # Client
@@ -186,13 +222,37 @@ dashboard_tool = FunctionTool(
     strict=False,
 )
 
+schema_tool = FunctionTool(
+    name="get_schema",
+    description=(
+        "Look up the live schema of vw_SafetyIntel_* views in Synapse: column "
+        "names, types, and 2 example rows per view. Use BEFORE writing SQL "
+        "whenever you are unsure of exact column names or value formats, and "
+        "AFTER any nl2sql error that mentions unknown columns/views."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "filter": {
+                "type": "string",
+                "description": (
+                    "Optional substring to narrow views, e.g. 'occurrence', "
+                    "'amo', 'audit'. Omit for all views."
+                ),
+            }
+        },
+        "additionalProperties": False,
+    },
+    strict=False,
+)
+
 # ---------------------------------------------------------------------------
 # Create / update agent version
 # ---------------------------------------------------------------------------
 definition = PromptAgentDefinition(
     model=MODEL_DEPLOYMENT,
     instructions=INSTRUCTIONS,
-    tools=[ai_search_tool, nl2sql_tool, chart_tool, dashboard_tool],
+    tools=[ai_search_tool, nl2sql_tool, chart_tool, dashboard_tool, schema_tool],
 )
 
 version = project.agents.create_version(
