@@ -8,11 +8,20 @@ export async function* streamChat(
   sessionId: string,
   message: string,
   signal?: AbortSignal,
+  live?: { enabled: boolean; bbox: number[] | null },
 ): AsyncGenerator<SSEEvent> {
   const res = await fetch("/api/assistant/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, message }),
+    // The map's live state travels with the question, so the assistant grounds on
+    // the same traffic picture the user is looking at — and only when that layer
+    // is on, because live data costs OpenSky credits.
+    body: JSON.stringify({
+      session_id: sessionId,
+      message,
+      live_enabled: Boolean(live?.enabled && live?.bbox),
+      bbox: live?.bbox ?? null,
+    }),
     signal,
   });
   if (!res.ok || !res.body) {

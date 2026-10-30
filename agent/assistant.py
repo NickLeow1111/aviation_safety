@@ -25,7 +25,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, AsyncIterator, Iterable
 
+import detect
 import documents
+import live
+import rulebook
 import store
 
 DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"
@@ -50,6 +53,7 @@ quote them exactly; never recompute or approximate them.
 state what would be needed. Do not pad, do not speculate, do not use general \
 aviation knowledge as a substitute for the data.
 5. Be concise: the answer first, then the supporting detail with citations.
+6. If a block says the system already applied a settings change, that change has happened — state it as applied ("separation is now 3 NM") and use the new numbers. You are not asking permission; the server already wrote them.
 """
 
 
@@ -258,14 +262,72 @@ async def _bridge(generator: Iterable[str]) -> AsyncIterator[tuple[str, str]]:
         yield ("delta", value)
 
 
-async def stream_answer(conn: Any, question: str) -> AsyncIterator[dict[str, Any]]:
+async def _live_block(conn: Any, live_request: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Grounding on the traffic picture, when the user asked for it.
+
+    Only when the map's live layer is on: an assistant that quietly spends OpenSky
+    credits to answer a question about last year's events is spending the budget on
+    something nobody asked for.
+    """
+    if not live_request or not live_request.get("enabled"):
+        return None
+    bbox = live_request.get("bbox")
+    if not bbox or len(bbox) != 4:
+        return None
+    try:
+        payload = await live.snapshot(conn, list(bbox))
+    except Exception as exc:  # noqa: BLE001 - say it is missing, do not invent traffic
+        return {
+            "kind": "live",
+            "label": "Live traffic",
+            "text": f"Live traffic could not be read ({type(exc).__name__}: {exc}). "
+            "Any statement about current aircraft would be unsourced.",
+        }
+
+    return {
+        "kind": "live",
+        "label": f"Live traffic ({payload.get('count', 0)} aircraft, {payload.get('age_seconds', 0):.0f}s old)",
+        "text": live.live_context_block(payload),
+    }
+
+
+async def stream_answer(
+    conn: Any,
+    question: str,
+    live_request: dict[str, Any] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
     """Yield SSE-ready events: sources → deltas → final (or error)."""
     question = (question or "").strip()
     if not question:
         yield {"type": "error", "data": "Ask a question first."}
         return
 
+    # Threshold changes are applied before retrieval, so the answer and the map
+    # are scored against the same rules in the same turn.
+    note: dict[str, Any] | None = None
+    try:
+        updated, changes = detect.parse_rules(question, rulebook.load(conn))
+        if updated is not None and changes:
+            rulebook.save(conn, updated)
+            note = {
+                "kind": "rules",
+                "label": "Detection rules, just updated from your message",
+                "text": (
+                    "The system has ALREADY applied these changes before you answered: "
+                    + ", ".join(changes)
+                    + f". Full rules now in force: {updated.as_dict()}. "
+                    "Report the change as applied and use the new numbers."
+                ),
+            }
+    except Exception:  # noqa: BLE001 - a failed rule write must not kill the answer
+        note = None
+
     blocks = build_context(conn, question)
+    if note:
+        blocks.insert(0, note)
+    live_block = await _live_block(conn, live_request)
+    if live_block:
+        blocks.append(live_block)
     yield {
         "type": "sources",
         "data": [
@@ -301,7 +363,8 @@ async def stream_answer(conn: Any, question: str) -> AsyncIterator[dict[str, Any
 
 
 def answer(conn: Any, question: str) -> dict[str, Any]:
-    """Non-streaming helper for tests and CLI use."""
+    """Non-streaming helper for tests and CLI use. No live traffic: the async
+    snapshot path lives in `stream_answer`."""
     blocks = build_context(conn, question)
     key = api_key()
     if not key:

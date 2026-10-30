@@ -71,6 +71,10 @@ function saveSettings(settings: { customPrompt: string; theme: Theme }) {
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [view, setView] = useState<"chat" | "map">("chat");
+  const [liveState, setLiveState] = useState<{ enabled: boolean; bbox: number[] | null }>({
+    enabled: false,
+    bbox: null,
+  });
   const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [ready, setReady] = useState<ReadyState>("checking");
   const [readyMsg, setReadyMsg] = useState("");
@@ -135,7 +139,7 @@ export default function App() {
     let sources: import("./types").SourceRef[] = [];
 
     try {
-      for await (const ev of streamChat(sessionId.current, text)) {
+      for await (const ev of streamChat(sessionId.current, text, undefined, liveState)) {
         if (ev.type === "tool_call") {
           const tid = nextId();
           lastToolIdRef.current = tid;
@@ -274,11 +278,12 @@ export default function App() {
 
       {view === "map" ? (
         <Suspense fallback={<div className="map-loading">Loading the map…</div>}>
-          <MapView />
+          <MapView onLiveChange={setLiveState} />
         </Suspense>
       ) : (
       <div className="app-shell">
         <Chat
+          liveGrounding={liveState.enabled}
           messages={messages}
           traces={traces}
           busy={busy}

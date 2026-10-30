@@ -1,22 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { ChatMessage, ToolTrace } from "./types";
+import type { ChatMessage } from "./types";
 
+/** The chat panel, kept deliberately plain.
+ *
+ *  An analyst reading an answer should see the answer. Everything that competed
+ *  with it — status badges, tool chips, a "latest tool" strip, a paragraph of
+ *  self-description — is gone. What remains is the thread, the citations, and one
+ *  input. The badge that survives is the one that changes the meaning of an
+ *  answer: whether live traffic is being read.
+ */
 export function Chat({
   messages,
-  traces,
   busy,
   onSend,
   ready,
-  readyMsg,
+  liveGrounding = false,
   suggestions,
 }: {
   messages: ChatMessage[];
-  traces: ToolTrace[];
+  traces?: unknown[];
   busy: boolean;
   onSend: (text: string) => void;
   ready: "checking" | "ready" | "error";
-  readyMsg: string;
+  readyMsg?: string;
+  liveGrounding?: boolean;
   suggestions: string[];
 }) {
   const [input, setInput] = useState("");
@@ -24,7 +32,7 @@ export function Chat({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, traces]);
+  }, [messages]);
 
   const submit = () => {
     const text = input.trim();
@@ -33,119 +41,100 @@ export function Chat({
     setInput("");
   };
 
-  const latestTrace = traces[traces.length - 1];
-
   return (
-    <aside className="chat-shell">
-      <div className="chat-header">
-        <div>
-          <h2>Safety Assistant</h2>
-          <p>Answers only from the files you upload and the event store. Every claim carries a citation.</p>
-        </div>
-        <span className={`assistant-state ${ready === "ready" ? "ok" : ready === "error" ? "err" : ""}`}>
-          {ready === "checking" ? "Linking" : ready === "ready" ? "Ready" : "Issue"}
-        </span>
-      </div>
+    <aside className="chat-shell chat-shell--minimal">
+      <header className="chat-top">
+        <span className="chat-title">Safety assistant</span>
+        {liveGrounding && (
+          <span className="chat-live" data-chat-live>
+            <span className="chat-live-dot" /> live traffic
+          </span>
+        )}
+        {ready === "error" && <span className="chat-warn">offline</span>}
+      </header>
 
-      <div className="assistant-brief">
-        <p>
-          Ask for a dashboard first, then keep drilling into incidents, findings, documents, and
-          occurrence patterns in the same thread.
-        </p>
-        <small>{readyMsg || "Connection status will appear here."}</small>
-      </div>
-
-      <div className="suggestion-row">
-        <div className="suggestion-scroll">
-          {suggestions.map((suggestion) => (
-            <button key={suggestion} type="button" onClick={() => onSend(suggestion)} disabled={busy}>
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="messages" ref={scrollRef}>
+      <div className="messages messages--minimal" ref={scrollRef}>
         {messages.length === 0 && (
-          <div className="empty">
-            Ask about the uploaded files, or for a breakdown of events by type, place or severity
-            drill-down.
+          <div className="chat-empty">
+            <p>Answers come from the files you uploaded and the event store, with citations.</p>
+            <div className="chat-starters">
+              {suggestions.slice(0, 3).map((suggestion) => (
+                <button key={suggestion} type="button" onClick={() => onSend(suggestion)} disabled={busy}>
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           </div>
         )}
-        {messages.map((m) => (
-          <Message key={m.id} message={m} traces={traces} />
+
+        {messages.map((message) => (
+          <Message key={message.id} message={message} />
         ))}
+
+        {busy && (
+          <div className="chat-thinking" aria-live="polite">
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
       </div>
 
-      <div className="assistant-footer">
-        <div className="footer-label">Latest tool</div>
-        <div className="footer-value">
-          {latestTrace
-            ? `${latestTrace.name} · ${latestTrace.status}`
-            : "answers cite the uploaded files and the event store"}
-        </div>
-      </div>
-
-      <div className="composer">
+      <div className="chat-composer">
         <textarea
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={busy ? "Waiting for response…" : "Ask a question (Shift+Enter for newline)"}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
+          rows={1}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={busy ? "Working…" : "Ask about the files, or about live traffic"}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
               submit();
             }
           }}
           disabled={busy}
         />
-        <button onClick={submit} disabled={busy || !input.trim()}>
-          Dispatch
+        <button
+          className="chat-send"
+          onClick={submit}
+          disabled={busy || !input.trim()}
+          aria-label="Send"
+          title="Send"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5" />
+            <polyline points="5 12 12 5 19 12" />
+          </svg>
         </button>
       </div>
     </aside>
   );
 }
 
-function Message({ message, traces }: { message: ChatMessage; traces: ToolTrace[] }) {
+function Message({ message }: { message: ChatMessage }) {
   if (message.role === "user") {
-    return <div className="msg user">{message.text}</div>;
+    return <div className="chat-user">{message.text}</div>;
   }
   if (message.role === "error") {
-    return <div className="msg error">⚠ {message.text}</div>;
+    return <div className="chat-error">{message.text}</div>;
   }
-  // bot
-  const myTraces = traces.filter((t) => message.toolIds.includes(t.id));
+
   return (
-    <article className="message-stack">
-      {myTraces.length > 0 && (
-        <div className="tool-stack">
-          {myTraces.map((t) => (
-            <div key={t.id} className={`tool-chip ${t.status === "running" ? "running" : ""}`}>
-              <span className="dot" />
-              {t.name}
-              {t.status === "running" ? "…" : " ✓"}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="msg bot">
-        {message.text ? (
-          <ReactMarkdown>{message.text}</ReactMarkdown>
-        ) : (
-          <span style={{ color: "var(--muted)" }}>Thinking…</span>
-        )}
+    <article className="chat-answer">
+      <div className="chat-answer-body">
+        {message.text ? <ReactMarkdown>{message.text}</ReactMarkdown> : <span className="chat-dots">…</span>}
       </div>
+
       {message.sources && message.sources.length > 0 && (
-        <div className="msg-sources" data-message-sources>
-          <span className="msg-sources-label">Grounded in</span>
+        <div className="chat-sources" data-message-sources>
           {message.sources.map((source) => (
             <span
               key={`${source.index}-${source.label}`}
-              className={`msg-source ${source.kind === "database" ? "is-db" : ""}`}
+              className={`chat-source ${source.kind === "live" ? "is-live" : source.kind === "database" ? "is-db" : ""}`}
               title={source.preview ?? source.label}
             >
-              [{source.index}] {source.label}
+              {source.kind === "live" ? "● " : `${source.index} `}
+              {source.label}
             </span>
           ))}
         </div>

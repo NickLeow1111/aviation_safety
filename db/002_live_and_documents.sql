@@ -54,3 +54,19 @@ CREATE INDEX IF NOT EXISTS document_chunk_document_idx ON document_chunk (docume
 -- The map's live traffic and the assistant's citations both key off events, so
 -- keep an index for the per-place aggregates the assistant quotes.
 CREATE INDEX IF NOT EXISTS safety_event_place_time_idx ON safety_event (place_icao, event_time DESC);
+
+/***************************************************************************************
+ Table   : detection_rules
+ Purpose : the user's separation and speed thresholds, as one JSON row.
+
+ Stored rather than passed per request so the map, the API and the assistant apply
+ the same numbers — a check that answers differently depending on who asked is
+ worse than no check at all.
+***************************************************************************************/
+
+CREATE TABLE IF NOT EXISTS detection_rules (
+    id          INTEGER PRIMARY KEY DEFAULT 1,
+    rules       JSONB       NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT detection_rules_single_row CHECK (id = 1)
+);

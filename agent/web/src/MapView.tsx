@@ -65,8 +65,43 @@ type Aircraft = {
   vertical_rate_fpm: number | null;
 };
 
+type Detection = {
+  type: string;
+  a?: string;
+  b?: string;
+  icao24_a?: string;
+  icao24_b?: string;
+  callsign?: string;
+  icao24?: string;
+  separation_nm?: number;
+  vertical_ft?: number | null;
+  ground_speed_kt?: number;
+  lat?: number | null;
+  lon?: number | null;
+};
+
+type Detections = {
+  enabled: boolean;
+  rules?: Record<string, unknown>;
+  checked?: number;
+  conflicts: Detection[];
+  overspeed: Detection[];
+  summary: string;
+  disclaimer?: string;
+};
+
+type Rules = {
+  min_separation_nm: number;
+  min_vertical_ft: number;
+  max_speed_kt: number;
+  ignore_ground: boolean;
+  enabled: boolean;
+};
+
 type LivePayload = {
   aircraft: Aircraft[];
+  rules?: Rules;
+  detections?: Detections;
   count: number;
   mode: string;
   credits_used: number;
@@ -112,7 +147,11 @@ function when(value: string): string {
 
 setWorkerUrl(maplibreWorkerUrl);
 
-export function MapView() {
+export function MapView({
+  onLiveChange,
+}: {
+  onLiveChange?: (state: { enabled: boolean; bbox: number[] | null }) => void;
+} = {}) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
@@ -130,6 +169,9 @@ export function MapView() {
   const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveNote, setLiveNote] = useState<string | null>(null);
+  const [rules, setRules] = useState<Rules | null>(null);
+  const [rulesBusy, setRulesBusy] = useState(false);
+  const [flagged, setFlagged] = useState<Detections | null>(null);
   const [aircraft, setAircraft] = useState<Aircraft | null>(null);
 
   // ---- map lifecycle -----------------------------------------------------
@@ -206,7 +248,12 @@ export function MapView() {
         source: "aircraft",
         paint: {
           "circle-radius": 4.5,
-          "circle-color": ["case", ["get", "on_ground"], "#6b7785", "#0f1a2e"],
+          "circle-color": [
+            "case",
+            ["==", ["get", "status"], "conflict"], "#d93a3a",
+            ["==", ["get", "status"], "overspeed"], "#e07b2a",
+            ["get", "on_ground"], "#6b7785", "#0f1a2e",
+          ],
           "circle-stroke-width": 1.5,
           "circle-stroke-color": "#ffffff",
         },
@@ -274,6 +321,8 @@ export function MapView() {
   liveRef.current = liveData;
   const liveStatusRef = useRef<LiveStatus | null>(null);
   liveStatusRef.current = liveStatus;
+  const onLiveChangeRef = useRef(onLiveChange);
+  onLiveChangeRef.current = onLiveChange;
 
   const fetchLive = useCallback(async () => {
     const instance = map.current;
@@ -315,6 +364,13 @@ export function MapView() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail ?? `HTTP ${response.status}`);
       setLiveData(body as LivePayload);
+      const liveBody = body as LivePayload;
+      if (liveBody.rules) setRules(liveBody.rules);
+      setFlagged(liveBody.detections ?? null);
+      onLiveChangeRef.current?.({
+        enabled: true,
+        bbox: bbox.split(",").map(Number),
+      });
       setLiveStatus((current) =>
         current
           ? { ...current, mode: body.mode, credits_used: body.credits_used, credits_remaining: body.credits_remaining }
@@ -346,6 +402,8 @@ export function MapView() {
   useEffect(() => {
     if (!live) {
       setLiveNote(null);
+      setFlagged(null);
+      onLiveChangeRef.current?.({ enabled: false, bbox: null });
       const instance = map.current;
       const source = instance?.getSource("aircraft") as GeoJSONSource | undefined;
       source?.setData({ type: "FeatureCollection", features: [] });
@@ -357,6 +415,15 @@ export function MapView() {
     const timer = setInterval(() => void fetchLive(), 15_000);
     return () => clearInterval(timer);
   }, [live, fetchLive]);
+
+  const statusFor = (icao24: string): string => {
+    if (!flagged) return "";
+    if ((flagged.conflicts ?? []).some((item) => item.icao24_a === icao24 || item.icao24_b === icao24)) {
+      return "conflict";
+    }
+    if ((flagged.overspeed ?? []).some((item) => item.icao24 === icao24)) return "overspeed";
+    return "";
+  };
 
   useEffect(() => {
     const instance = map.current;
@@ -372,6 +439,7 @@ export function MapView() {
           icao24: item.icao24,
           on_ground: item.on_ground,
           callsign: item.callsign ?? item.icao24,
+          status: statusFor(item.icao24),
         },
       }));
     source.setData({ type: "FeatureCollection", features });
@@ -485,6 +553,102 @@ export function MapView() {
             </p>
           )}
         </section>
+
+        {live && rules && (
+          <section className="map-block">
+            <h3>Detection rules</h3>
+            <div className="rule-grid">
+              <label>
+                <span>separation NM</span>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  data-rule="min_separation_nm"
+                  value={rules.min_separation_nm}
+                  onChange={(event) =>
+                    setRules({ ...rules, min_separation_nm: Number(event.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                <span>vertical ft</span>
+                <input
+                  type="number"
+                  step="100"
+                  min="0"
+                  data-rule="min_vertical_ft"
+                  value={rules.min_vertical_ft}
+                  onChange={(event) => setRules({ ...rules, min_vertical_ft: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                <span>max kt</span>
+                <input
+                  type="number"
+                  step="10"
+                  min="50"
+                  data-rule="max_speed_kt"
+                  value={rules.max_speed_kt}
+                  onChange={(event) => setRules({ ...rules, max_speed_kt: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <button
+              className="map-btn"
+              data-apply-rules
+              disabled={rulesBusy}
+              onClick={async () => {
+                setRulesBusy(true);
+                try {
+                  await fetch("/api/detect/rules", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(rules),
+                  });
+                  await fetchLive();
+                } finally {
+                  setRulesBusy(false);
+                }
+              }}
+            >
+              {rulesBusy ? "Applying…" : "Apply rules"}
+            </button>
+
+            {flagged && (
+              <p className="map-live-status" data-detection-summary>
+                {flagged.summary}
+              </p>
+            )}
+            {flagged && flagged.conflicts.length > 0 && (
+              <ul className="detection-list" data-detection-conflicts>
+                {flagged.conflicts.slice(0, 5).map((item) => (
+                  <li key={`${item.icao24_a}-${item.icao24_b}`} className="is-conflict">
+                    <strong>
+                      {item.a} / {item.b}
+                    </strong>
+                    <span>
+                      {item.separation_nm} NM
+                      {item.vertical_ft !== null && item.vertical_ft !== undefined
+                        ? ` · ${item.vertical_ft} ft`
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {flagged && flagged.overspeed.length > 0 && (
+              <ul className="detection-list" data-detection-overspeed>
+                {flagged.overspeed.slice(0, 5).map((item) => (
+                  <li key={item.icao24} className="is-overspeed">
+                    <strong>{item.callsign}</strong>
+                    <span>{item.ground_speed_kt} kt</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
 
         <section className="map-block">
           <h3>Time</h3>
