@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { VegaLite } from "react-vega";
+import ReactMarkdown from "react-markdown";
 import type { ChartArtifact, ToolTrace } from "./types";
 
 type OpsMetric = { label: string; value: string; detail: string };
@@ -67,10 +68,12 @@ export function Canvas({
   charts,
   traces,
   lastPrompt,
+  lastAnswer = "",
 }: {
   charts: ChartArtifact[];
   traces: ToolTrace[];
   lastPrompt: string;
+  lastAnswer?: string;
 }) {
   const latestChart = getSpotlightChart(charts);
 
@@ -81,17 +84,22 @@ export function Canvas({
           <span className="eyebrow">Query output</span>
           <h2>{lastPrompt}</h2>
         </div>
-        <span className="section-meta">{traces.length} tool calls</span>
+        {traces.length > 0 && <span className="section-meta">{traces.length} tool calls</span>}
       </div>
 
       <div className="canvas-body single-flow-body">
         <section className="output-story">
           {latestChart ? (
             <ChartCard spec={latestChart.spec} variant="hero" />
+          ) : lastAnswer ? (
+            <div className="answer-card" data-canvas-answer>
+              <span className="answer-card-label">Grounded answer</span>
+              <ReactMarkdown>{lastAnswer}</ReactMarkdown>
+            </div>
           ) : (
             <div className="empty-state-card">
               <strong>Awaiting first output.</strong>
-              <p>Ask a safety question and the answer will land here as a single, clean output flow.</p>
+              <p>Ask about the uploaded files or the event data and the answer will land here.</p>
             </div>
           )}
         </section>

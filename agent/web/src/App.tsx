@@ -132,6 +132,7 @@ export default function App() {
     setBusy(true);
 
     const lastToolIdRef = { current: "" };
+    let sources: import("./types").SourceRef[] = [];
 
     try {
       for await (const ev of streamChat(sessionId.current, text)) {
@@ -147,8 +148,17 @@ export default function App() {
           if ((ev.data.name === "chart_spec" || ev.data.name === "dashboard_spec") && parsed && typeof parsed === "object") {
             setCharts((c) => [...c, { id: nextId(), spec: parsed }]);
           }
+        } else if (ev.type === "sources") {
+          sources = ev.data;
+        } else if (ev.type === "delta") {
+          // Append as it streams so a long answer starts arriving immediately.
+          setMessages((m) =>
+            m.map((x) => (x.id === botId && x.role === "bot" ? { ...x, text: x.text + ev.data } : x)),
+          );
         } else if (ev.type === "final") {
-          setMessages((m) => m.map((x) => x.id === botId && x.role === "bot" ? { ...x, text: ev.data } : x));
+          setMessages((m) =>
+            m.map((x) => (x.id === botId && x.role === "bot" ? { ...x, text: ev.data, sources } : x)),
+          );
         } else if (ev.type === "error") {
           setMessages((m) => [...m.filter((x) => x.id !== botId), { id: nextId(), role: "error", text: ev.data }]);
         }
@@ -159,6 +169,11 @@ export default function App() {
       setBusy(false);
     }
   };
+
+  const latestAnswer = useMemo(
+    () => [...messages].reverse().find((m) => m.role === "bot" && m.text)?.text ?? "",
+    [messages],
+  );
 
   const latestUserPrompt = useMemo(
     () => [...messages].reverse().find((m) => m.role === "user")?.text ?? "Awaiting analyst brief",
@@ -278,6 +293,7 @@ export default function App() {
             charts={charts}
             traces={traces}
             lastPrompt={latestUserPrompt}
+            lastAnswer={latestAnswer}
           />
         </main>
       </div>

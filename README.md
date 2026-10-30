@@ -116,6 +116,73 @@ POST /api/events/import   parse + geocode, write everything that passed
 Preview and import run the same parser — what the preview promises is what the
 import writes.
 
+## Live traffic (OpenSky)
+
+Toggle **Live traffic** on the map and aircraft appear, refreshed every 15 s with a
+10 s server-side cache — several viewers share one billed request.
+
+OpenSky meters by **bounding-box area**, not call count: 1 credit up to 25 square
+degrees, 400 credits/day anonymous, 4000/day with OAuth2 client credentials. So:
+
+- the poller lives on the server, never in the browser;
+- every request is booked against a daily budget in Postgres (`opensky_usage`), so
+  a restart cannot silently reset the meter;
+- a viewport larger than 25 sq° is **narrowed automatically** to a local box, and
+  the UI says it did that, rather than showing an error nobody can act on;
+- usage stops at 85% of the allowance, leaving headroom for a human using the same
+  account.
+
+Credentials are optional — without them the app runs anonymously on the smaller
+budget. Put them in `agent/.env.local`:
+
+```
+OPENSKY_CLIENT_ID=...
+OPENSKY_CLIENT_SECRET=...
+```
+
+Live ADS-B is **not surveillance grade**: 5–15 s updates, MLAT gaps, no TCAS, no
+Mode C-only traffic. The aircraft card says so.
+
+## The assistant
+
+The chat panel answers from **what the user uploaded** plus the event store, and
+cites its sources. The rule is the one this project already runs on: the database
+decides facts, the model decides wording.
+
+How an answer is built:
+
+1. **Retrieval** — Postgres full-text search over `document_chunk` (no embeddings:
+   the gateway has none, and for this corpus `tsvector` answers the same questions
+   without shipping text to a third party), plus SQL aggregates over
+   `safety_event` (counts by type, severity, source and place).
+2. **Grounding** — both become numbered context blocks. The system prompt allows
+   the model to quote them and nothing else, and requires a `[n]` citation for each
+   claim.
+3. **Answer** — streamed from the model gateway; the `[n]` references are shown
+   under the answer as **Grounded in** chips pointing back at the file and chunk.
+
+If the gateway is unavailable the assistant falls back to an **extractive answer**
+— the retrieved text, quoted, labelled as extractive. It never invents a paragraph
+to fill the gap.
+
+Upload a `.md`, `.txt`, `.json` or `.csv` through **Upload file** and it is indexed
+for citation; a CSV does both jobs (events *and* citable text).
+
+### Endpoints
+
+```
+GET  /api/live              ?bbox=min_lat,min_lon,max_lat,max_lon
+GET  /api/live/status       credential mode, credits used today
+GET  /api/documents         corpus summary
+POST /api/documents         index a file for citation
+DEL  /api/documents/{id}
+POST /api/assistant/stream  SSE: sources → deltas → final
+```
+
+Configure the gateway with `OPENCODE_GO_API_KEY` (and optionally
+`OPENCODE_GO_BASE_URL`, `OPENCODE_GO_MODEL`). Without a key the assistant still
+answers, extractively.
+
 ## Tests
 
 ```bash
@@ -131,9 +198,9 @@ Pure logic only — no database, no Azure. `tests/conftest.py` stubs the heavy S
 | 0 · repo hygiene (untrack `.env`, drop `.bak`, this README) | done |
 | 1 · event store + seed + tests | done |
 | 2 · map canvas, event table, CSV upload with geocode preview | done (CSV; XLSX refused with advice) |
-| 3 · OpenSky live poller (server-side, credit-budgeted) | needs client credentials |
+| 3 · OpenSky live poller (server-side, credit-budgeted) | done — anonymous by default, OAuth2 upgradeable |
 | 4 · derived detections (loss of separation, runway incursion) | after 3 |
-| 5 · agent tools over the map (`geo_query`, `map_spec`, `explain_event`) | after 2 |
+| 5 · grounded assistant over uploaded files + event store | done (citations, fuzzy fallback) |
 
 Deliberately out of scope for now: vector search (OpenSky embeddings aside, the
 doc corpus is small), and any bulk historical ADS-B import — the free OpenSky

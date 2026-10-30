@@ -52,6 +52,39 @@ type EventRow = {
   provenance: string;
 };
 
+type Aircraft = {
+  icao24: string;
+  callsign: string | null;
+  country: string | null;
+  lat: number | null;
+  lon: number | null;
+  altitude_ft: number | null;
+  ground_speed_kt: number | null;
+  on_ground: boolean;
+  track_deg: number | null;
+  vertical_rate_fpm: number | null;
+};
+
+type LivePayload = {
+  aircraft: Aircraft[];
+  count: number;
+  mode: string;
+  credits_used: number;
+  credits_budget: number;
+  credits_remaining: number;
+  age_seconds: number;
+  cached: boolean;
+};
+
+type LiveStatus = {
+  mode: string;
+  credits_used: number;
+  credits_budget: number;
+  credits_remaining: number;
+  cache_ttl_seconds: number;
+  max_bbox_square_degrees: number;
+};
+
 type Filters = {
   types: string[];
   severities: string[];
@@ -92,6 +125,12 @@ export function MapView() {
   const [selected, setSelected] = useState<EventRow | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [showUpload, setShowUpload] = useState(false);
+  const [live, setLive] = useState(false);
+  const [liveData, setLiveData] = useState<LivePayload | null>(null);
+  const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveNote, setLiveNote] = useState<string | null>(null);
+  const [aircraft, setAircraft] = useState<Aircraft | null>(null);
 
   // ---- map lifecycle -----------------------------------------------------
   useEffect(() => {
@@ -151,6 +190,34 @@ export function MapView() {
         const id = Number(feature.properties?.id);
         setSelected((current) => eventsRef.current.find((row) => row.id === id) ?? current);
       });
+      instance.addSource("aircraft", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      instance.addLayer({
+        id: "aircraft-halo",
+        type: "circle",
+        source: "aircraft",
+        paint: { "circle-radius": 9, "circle-color": "#0f1a2e", "circle-opacity": 0.12 },
+      });
+      instance.addLayer({
+        id: "aircraft-dot",
+        type: "circle",
+        source: "aircraft",
+        paint: {
+          "circle-radius": 4.5,
+          "circle-color": ["case", ["get", "on_ground"], "#6b7785", "#0f1a2e"],
+          "circle-stroke-width": 1.5,
+          "circle-stroke-color": "#ffffff",
+        },
+      });
+      instance.on("click", "aircraft-dot", (event: MapLayerMouseEvent) => {
+        const feature = event.features?.[0];
+        if (!feature) return;
+        const properties = feature.properties as Record<string, unknown>;
+        const id = String(properties.icao24 ?? "");
+        setAircraft(liveRef.current?.aircraft.find((item) => item.icao24 === id) ?? null);
+      });
       instance.on("mouseenter", "event-dot", () => {
         instance.getCanvas().style.cursor = "pointer";
       });
@@ -201,6 +268,114 @@ export function MapView() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // ---- live traffic ------------------------------------------------------
+  const liveRef = useRef<LivePayload | null>(null);
+  liveRef.current = liveData;
+  const liveStatusRef = useRef<LiveStatus | null>(null);
+  liveStatusRef.current = liveStatus;
+
+  const fetchLive = useCallback(async () => {
+    const instance = map.current;
+    if (!instance) return;
+
+    // OpenSky bills by area, so a world view is not a view we are allowed to ask
+    // for. Rather than refuse and leave the user staring at an error, narrow the
+    // map to a local box and say that we did.
+    const maxArea = liveStatusRef.current?.max_bbox_square_degrees ?? 25;
+    let bounds = instance.getBounds();
+    const area = (bounds.getNorth() - bounds.getSouth()) * (bounds.getEast() - bounds.getWest());
+    if (area > maxArea) {
+      // Narrow around the events, not around whatever patch of ocean the world
+      // view happened to be centred on: a live layer that opens on empty water
+      // looks broken even when it is working.
+      const points = eventsRef.current;
+      const center = points.length
+        ? points.reduce(
+            (acc, row) => ({ lng: acc.lng + row.lon / points.length, lat: acc.lat + row.lat / points.length }),
+            { lng: 0, lat: 0 },
+          )
+        : instance.getCenter();
+      const span = Math.min(4, Math.sqrt(maxArea) * 0.6);
+      bounds = new LngLatBounds(
+        [center.lng - span / 2, center.lat - span / 2],
+        [center.lng + span / 2, center.lat + span / 2],
+      );
+      instance.fitBounds(bounds, { duration: 600, maxZoom: 12 });
+      setLiveNote(
+        `narrowed to a ${span.toFixed(1)}° box — OpenSky bills by area, so live traffic is a local view`,
+      );
+    }
+
+    const bbox = [bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()]
+      .map((value) => value.toFixed(4))
+      .join(",");
+    try {
+      const response = await fetch(`/api/live?bbox=${bbox}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail ?? `HTTP ${response.status}`);
+      setLiveData(body as LivePayload);
+      setLiveStatus((current) =>
+        current
+          ? { ...current, mode: body.mode, credits_used: body.credits_used, credits_remaining: body.credits_remaining }
+          : current,
+      );
+      setLiveError(null);
+    } catch (cause) {
+      setLiveError(String(cause).replace("Error: ", ""));
+    }
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/live/status")
+      .then((response) => response.json())
+      .then((body) => setLiveStatus(body as LiveStatus))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !ready || !live) return;
+    const onMoveEnd = () => void fetchLive();
+    instance.on("moveend", onMoveEnd);
+    return () => {
+      instance.off("moveend", onMoveEnd);
+    };
+  }, [live, ready, fetchLive]);
+
+  useEffect(() => {
+    if (!live) {
+      setLiveNote(null);
+      const instance = map.current;
+      const source = instance?.getSource("aircraft") as GeoJSONSource | undefined;
+      source?.setData({ type: "FeatureCollection", features: [] });
+      setLiveData(null);
+      return;
+    }
+    void fetchLive();
+    // 15s with a 10s server-side cache: several viewers share one billed request.
+    const timer = setInterval(() => void fetchLive(), 15_000);
+    return () => clearInterval(timer);
+  }, [live, fetchLive]);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !ready) return;
+    const source = instance.getSource("aircraft") as GeoJSONSource | undefined;
+    if (!source) return;
+    const features = (liveData?.aircraft ?? [])
+      .filter((item) => item.lat !== null && item.lon !== null)
+      .map((item) => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [item.lon as number, item.lat as number] },
+        properties: {
+          icao24: item.icao24,
+          on_ground: item.on_ground,
+          callsign: item.callsign ?? item.icao24,
+        },
+      }));
+    source.setData({ type: "FeatureCollection", features });
+  }, [liveData, ready]);
 
   // ---- push events into the map -----------------------------------------
   useEffect(() => {
@@ -281,6 +456,35 @@ export function MapView() {
             Upload file
           </button>
         </div>
+
+        <section className="map-block">
+          <div className="map-live-head">
+            <h3>Live traffic</h3>
+            <button
+              className={`map-toggle ${live ? "is-on" : ""}`}
+              data-live-toggle
+              onClick={() => setLive((value) => !value)}
+            >
+              {live ? "On" : "Off"}
+            </button>
+          </div>
+          {live && (
+            <p className="map-live-status" data-live-status>
+              {liveData
+                ? `${liveData.count} aircraft · ${liveData.mode} · ${liveData.credits_used}/${liveData.credits_budget} credits today · ${Math.round(liveData.age_seconds)}s old`
+                : liveError
+                  ? "no contact"
+                  : "contacting OpenSky…"}
+            </p>
+          )}
+          {liveNote && live && <p className="map-live-hint">{liveNote}</p>}
+          {liveError && live && <p className="map-error">{liveError}</p>}
+          {!live && liveStatus && (
+            <p className="map-live-hint">
+              OpenSky ADS-B · {liveStatus.mode} · {liveStatus.credits_used}/{liveStatus.credits_budget} credits used today
+            </p>
+          )}
+        </section>
 
         <section className="map-block">
           <h3>Time</h3>
@@ -404,6 +608,33 @@ export function MapView() {
             </tbody>
           </table>
         </div>
+
+        {aircraft && (
+          <div className="map-detail map-detail--aircraft" data-aircraft-detail>
+            <div className="map-detail-head">
+              <strong>{aircraft.callsign ?? aircraft.icao24}</strong>
+              <button className="map-detail-close" onClick={() => setAircraft(null)} aria-label="Close aircraft">
+                ×
+              </button>
+            </div>
+            <dl>
+              <dt>Callsign</dt>
+              <dd>{aircraft.callsign ?? "—"}</dd>
+              <dt>State</dt>
+              <dd>{aircraft.on_ground ? "on the ground" : "airborne"}</dd>
+              <dt>Altitude</dt>
+              <dd>{aircraft.altitude_ft !== null ? `${aircraft.altitude_ft} ft` : "—"}</dd>
+              <dt>Ground speed</dt>
+              <dd>{aircraft.ground_speed_kt !== null ? `${aircraft.ground_speed_kt} kt` : "—"}</dd>
+              <dt>Vertical rate</dt>
+              <dd>{aircraft.vertical_rate_fpm !== null ? `${aircraft.vertical_rate_fpm} ft/min` : "—"}</dd>
+              <dt>Country</dt>
+              <dd>{aircraft.country ?? "—"}</dd>
+              <dt>ICAO24</dt>
+              <dd className="map-provenance">{aircraft.icao24} · live ADS-B, not surveillance grade</dd>
+            </dl>
+          </div>
+        )}
 
         {selected && (
           <div className="map-detail" data-event-detail>

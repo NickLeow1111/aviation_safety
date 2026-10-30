@@ -21,6 +21,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import assistant
+import store
+from api_assistant import router as assistant_router
 from api_events import router as events_router
 
 logging.basicConfig(level=logging.INFO)
@@ -45,6 +48,7 @@ mimetypes.add_type("text/javascript", ".mjs")
 
 app = FastAPI(title="Safety Intelligence Bot")
 app.include_router(events_router)
+app.include_router(assistant_router)
 
 
 def _demo_mode_enabled() -> bool:
@@ -68,25 +72,35 @@ async def healthz() -> dict[str, str]:
 
 
 @app.get("/readyz")
-async def readyz() -> dict[str, str]:
+async def readyz() -> dict:
+    """Report what the chat actually depends on.
+
+    The chat is served by the local grounded assistant — uploaded corpus, event
+    store, model gateway — not by the Foundry agent. Reporting a missing Azure SDK
+    as a red failure while the assistant answers perfectly well was telling the
+    user the wrong subsystem was broken. The Foundry details stay in the payload
+    as information, not as a failure.
+    """
     if _demo_mode_enabled():
         return {"status": "ready", "agent_name": "demo-mode"}
 
-    if _AGENT_IMPORT_ERROR is not None:
-        raise HTTPException(
-            503,
-            f"Agent module failed to import at startup: {_AGENT_IMPORT_ERROR}. "
-            "Check the container logs for the full traceback.",
-        )
+    try:
+        with store.connect() as conn:
+            corpus = assistant.corpus_summary(conn)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"event store unavailable: {exc}") from exc
 
-    name = os.environ.get("FOUNDRY_AGENT_NAME")
-    if not name:
-        raise HTTPException(
-            503,
-            "FOUNDRY_AGENT_NAME not set. Run scripts/create_foundry_agent.py "
-            "(Post_Deployment_Steps.md §6) and set the env var (§7).",
-        )
-    return {"status": "ready", "agent_name": name}
+    return {
+        "status": "ready",
+        "agent_name": "grounded-assistant",
+        "assistant": "grounded",
+        "model": corpus["model"],
+        "documents": corpus["document_count"],
+        "chunks": corpus["chunk_count"],
+        "events": corpus["event_count"],
+        "foundry_agent": os.environ.get("FOUNDRY_AGENT_NAME"),
+        "foundry_import_error": _AGENT_IMPORT_ERROR,
+    }
 
 
 @app.post("/chat")

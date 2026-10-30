@@ -40,7 +40,7 @@ export function Chat({
       <div className="chat-header">
         <div>
           <h2>Safety Assistant</h2>
-          <p>Synapse-backed analyst copilot for repository, occurrence, and audit follow-up.</p>
+          <p>Answers only from the files you upload and the event store. Every claim carries a citation.</p>
         </div>
         <span className={`assistant-state ${ready === "ready" ? "ok" : ready === "error" ? "err" : ""}`}>
           {ready === "checking" ? "Linking" : ready === "ready" ? "Ready" : "Issue"}
@@ -68,7 +68,7 @@ export function Chat({
       <div className="messages" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="empty">
-            Ask for a runway-incursion dashboard, bird-strike review, or any Synapse-backed safety
+            Ask about the uploaded files, or for a breakdown of events by type, place or severity
             drill-down.
           </div>
         )}
@@ -80,7 +80,9 @@ export function Chat({
       <div className="assistant-footer">
         <div className="footer-label">Latest tool</div>
         <div className="footer-value">
-          {latestTrace ? `${latestTrace.name} · ${latestTrace.status}` : "No tool calls yet"}
+          {latestTrace
+            ? `${latestTrace.name} · ${latestTrace.status}`
+            : "answers cite the uploaded files and the event store"}
         </div>
       </div>
 
@@ -134,6 +136,20 @@ function Message({ message, traces }: { message: ChatMessage; traces: ToolTrace[
           <span style={{ color: "var(--muted)" }}>Thinking…</span>
         )}
       </div>
+      {message.sources && message.sources.length > 0 && (
+        <div className="msg-sources" data-message-sources>
+          <span className="msg-sources-label">Grounded in</span>
+          {message.sources.map((source) => (
+            <span
+              key={`${source.index}-${source.label}`}
+              className={`msg-source ${source.kind === "database" ? "is-db" : ""}`}
+              title={source.preview ?? source.label}
+            >
+              [{source.index}] {source.label}
+            </span>
+          ))}
+        </div>
+      )}
     </article>
   );
 }

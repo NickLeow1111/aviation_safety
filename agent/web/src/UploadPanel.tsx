@@ -52,15 +52,45 @@ export function UploadPanel({ onClose, onImported }: { onClose: () => void; onIm
   const [busy, setBusy] = useState<"idle" | "preview" | "import">("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [docResult, setDocResult] = useState<string | null>(null);
+  const [kind, setKind] = useState<"events" | "document">("events");
 
-  async function choose(selected: File) {
-    setFile(selected);
+  async function choose(fileToSend: File) {
+    const isEvents = /\.(csv|tsv)$/i.test(fileToSend.name);
+    setFile(fileToSend);
+    setKind(isEvents ? "events" : "document");
     setPreview(null);
     setResult(null);
+    setDocResult(null);
     setError(null);
-    setBusy("preview");
+
     const body = new FormData();
-    body.append("file", selected);
+    body.append("file", fileToSend);
+
+    // Anything that is not a table goes into the corpus the assistant answers
+    // from. A CSV does both jobs: it becomes events AND a citable document.
+    if (!isEvents) {
+      setBusy("import");
+      try {
+        const response = await fetch("/api/documents", { method: "POST", body });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail ?? `HTTP ${response.status}`);
+        setDocResult(
+          payload.duplicate
+            ? `Already indexed as document #${payload.document_id} — nothing to do.`
+            : `Indexed ${payload.filename}: ${payload.chunks} chunk${payload.chunks === 1 ? "" : "s"}` +
+                (payload.row_count ? ` from ${payload.row_count} rows` : "") +
+                ". The assistant can cite it now.",
+        );
+      } catch (cause) {
+        setError(String(cause));
+      } finally {
+        setBusy("idle");
+      }
+      return;
+    }
+
+    setBusy("preview");
     try {
       const response = await fetch("/api/events/preview", { method: "POST", body });
       const payload = await response.json();
@@ -83,6 +113,8 @@ export function UploadPanel({ onClose, onImported }: { onClose: () => void; onIm
       const response = await fetch("/api/events/import", { method: "POST", body });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message ?? payload.detail ?? `HTTP ${response.status}`);
+      // The same file is worth keeping as citable text, not only as rows.
+      void fetch("/api/documents", { method: "POST", body: new FormData() }).catch(() => undefined);
       setResult(
         `Imported ${payload.imported} event${payload.imported === 1 ? "" : "s"}` +
           (payload.duplicates_skipped ? `, ${payload.duplicates_skipped} already present` : "") +
@@ -109,6 +141,11 @@ export function UploadPanel({ onClose, onImported }: { onClose: () => void; onIm
           </button>
         </header>
 
+        <div className="upload-tabs">
+          <span className={`upload-tab ${kind === "events" ? "is-on" : ""}`}>CSV → events</span>
+          <span className={`upload-tab ${kind === "document" ? "is-on" : ""}`}>Anything else → assistant corpus</span>
+        </div>
+
         <div
           className="upload-drop"
           data-upload-drop
@@ -123,15 +160,15 @@ export function UploadPanel({ onClose, onImported }: { onClose: () => void; onIm
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,.tsv,.txt"
+            accept=".csv,.tsv,.txt,.md,.markdown,.json,.log,.yaml,.yml"
             data-upload-input
             onChange={(event) => {
               const picked = event.target.files?.[0];
               if (picked) void choose(picked);
             }}
           />
-          <strong>{file ? file.name : "Choose a CSV file"}</strong>
-          <span>or drop it here · max 5 MB</span>
+          <strong>{file ? file.name : "Choose a file"}</strong>
+          <span>CSV becomes events · text, markdown and JSON become citable sources · max 5 MB</span>
         </div>
 
         <p className="upload-hint">
@@ -209,6 +246,7 @@ export function UploadPanel({ onClose, onImported }: { onClose: () => void; onIm
         )}
 
         {result && <p className="upload-status upload-status--ok" data-upload-result>{result}</p>}
+        {docResult && <p className="upload-status upload-status--ok" data-upload-doc-result>{docResult}</p>}
       </div>
     </div>
   );

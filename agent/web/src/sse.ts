@@ -1,7 +1,7 @@
 import type { SSEEvent } from "./types";
 
 /**
- * POST to /chat and yield parsed SSE JSON events.
+ * POST to the grounded assistant and yield parsed SSE JSON events.
  * The backend emits `data: {json}\n\n` chunks via FastAPI StreamingResponse.
  */
 export async function* streamChat(
@@ -9,14 +9,14 @@ export async function* streamChat(
   message: string,
   signal?: AbortSignal,
 ): AsyncGenerator<SSEEvent> {
-  const res = await fetch("/chat", {
+  const res = await fetch("/api/assistant/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, message }),
     signal,
   });
   if (!res.ok || !res.body) {
-    throw new Error(`/chat failed: ${res.status} ${res.statusText}`);
+    throw new Error(`assistant failed: ${res.status} ${res.statusText}`);
   }
 
   const reader = res.body.getReader();
