@@ -214,6 +214,32 @@ to fill the gap.
 Upload a `.md`, `.txt`, `.json` or `.csv` through **Upload file** and it is indexed
 for citation; a CSV does both jobs (events *and* citable text).
 
+### Predicted separation
+
+A snapshot can only report a loss of separation once it has happened. `predict.py`
+dead-reckons each aircraft along its reported track, ground speed and vertical rate,
+then solves for the closest point of approach over the next two minutes — so the
+question becomes *"these two will be 0.9 NM apart in 46 seconds"* instead of *"these
+two were close a moment ago"*.
+
+The assumptions are stated wherever the numbers appear: constant track, constant
+speed, constant vertical rate. A turn invalidates it. Pairs already inside the
+minimum are left to the snapshot check rather than listed twice, and a pair is only
+predicted when it is genuinely converging.
+
+### Manoeuvres from track history
+
+`tracks.py` keeps ten minutes of position history per aircraft — in memory, pruned on
+every write, gone on restart. That is enough to see the moves a single snapshot
+cannot:
+
+- **go-around** — descended toward the runway, then climbing away again below 3,500 ft
+- **holding pattern** — turned through 300° inside a 4 NM circle
+- **unstable approach** — below 1,200 ft and either too fast or descending far too steeply
+
+A go-around is a normal, safe manoeuvre. It is reported because it is worth knowing
+about, not because anything went wrong.
+
 ### Asking about the traffic, from the map
 
 The map carries its own assistant panel on the right, so a question about what is on

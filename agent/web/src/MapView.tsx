@@ -134,11 +134,28 @@ type Anomalies = {
   disclaimer?: string;
 };
 
+type PredictedPair = {
+  a: string;
+  b: string;
+  current_nm: number;
+  predicted_nm: number;
+  time_to_cpa_s: number;
+  vertical_ft: number | null;
+};
+
+type Predicted = { horizon_s: number; conflicts: PredictedPair[]; summary: string };
+
+type MotionEvent = { kind: string; callsign: string; detail: string };
+
+type Motion = { events: MotionEvent[]; summary: string };
+
 type LivePayload = {
   aircraft: Aircraft[];
   rules?: Rules;
   detections?: Detections;
   anomalies?: Anomalies;
+  predicted?: Predicted;
+  motion?: Motion;
   count: number;
   mode: string;
   credits_used: number;
@@ -249,6 +266,8 @@ export function MapView({
   const [rulesBusy, setRulesBusy] = useState(false);
   const [flagged, setFlagged] = useState<Detections | null>(null);
   const [unusual, setUnusual] = useState<Anomalies | null>(null);
+  const [predicted, setPredicted] = useState<Predicted | null>(null);
+  const [motion, setMotion] = useState<Motion | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(true);
   const [aircraft, setAircraft] = useState<Aircraft | null>(null);
 
@@ -492,6 +511,8 @@ export function MapView({
       if (liveBody.rules) setRules(liveBody.rules);
       setFlagged(liveBody.detections ?? null);
       setUnusual(liveBody.anomalies ?? null);
+      setPredicted(liveBody.predicted ?? null);
+      setMotion(liveBody.motion ?? null);
       onLiveChangeRef.current?.({
         enabled: true,
         bbox: bbox.split(",").map(Number),
@@ -529,6 +550,8 @@ export function MapView({
       setLiveNote(null);
       setFlagged(null);
       setUnusual(null);
+      setPredicted(null);
+      setMotion(null);
       onLiveChangeRef.current?.({ enabled: false, bbox: null });
       const instance = map.current;
       const source = instance?.getSource("aircraft") as GeoJSONSource | undefined;
@@ -793,6 +816,32 @@ export function MapView({
                       {item.vertical_ft !== null && item.vertical_ft !== undefined
                         ? ` · ${item.vertical_ft} ft`
                         : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {predicted && predicted.conflicts.length > 0 && (
+              <ul className="detection-list" data-predicted-list>
+                {predicted.conflicts.slice(0, 4).map((item) => (
+                  <li key={`${item.a}-${item.b}`} className="is-predicted">
+                    <strong>
+                      {item.a} / {item.b}
+                    </strong>
+                    <span>
+                      {item.predicted_nm} NM in {item.time_to_cpa_s}s (now {item.current_nm})
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {motion && motion.events.length > 0 && (
+              <ul className="detection-list" data-motion-list>
+                {motion.events.slice(0, 4).map((item) => (
+                  <li key={`${item.callsign}-${item.kind}`} className="is-motion">
+                    <strong>{item.callsign}</strong>
+                    <span>
+                      {item.kind.replace(/_/g, " ")} — {item.detail}
                     </span>
                   </li>
                 ))}

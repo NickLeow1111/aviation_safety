@@ -12,7 +12,9 @@ from typing import Any, Sequence
 import anomaly
 import detect
 import opensky
+import predict
 import rulebook
+import tracks
 
 
 async def snapshot(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
@@ -21,6 +23,12 @@ async def snapshot(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
     payload["rules"] = rules.as_dict()
     payload["detections"] = detect.evaluate(payload["aircraft"], rules)
     payload["anomalies"] = anomaly.find(payload["aircraft"])
+    # Only a genuinely fresh request may extend the tracks: a cache hit is the same
+    # instant of traffic, and recording it twice would invent a stationary aircraft.
+    if not payload.get("cached"):
+        tracks.record(payload["aircraft"])
+    payload["motion"] = tracks.motion_events()
+    payload["predicted"] = predict.evaluate(payload["aircraft"], rules)
     return payload
 
 
@@ -67,9 +75,37 @@ def live_context_block(payload: dict[str, Any]) -> str:
     elif unusual:
         lines.append("No unusual flight behaviour detected in this snapshot.")
 
+    predicted = payload.get("predicted") or {}
+    if predicted.get("conflicts"):
+        lines.append(
+            f"Predicted separation losses within {predicted.get('horizon_s')} seconds "
+            "(dead reckoning, straight-line, projection only):"
+        )
+        for item in predicted["conflicts"][:10]:
+            vertical = item.get("vertical_ft")
+            lines.append(
+                f"  {item['a']} / {item['b']} — now {item['current_nm']} NM, "
+                f"predicted {item['predicted_nm']} NM in {item['time_to_cpa_s']}s"
+                + (f", {vertical} ft vertical then" if vertical is not None else "")
+            )
+    elif predicted:
+        lines.append(
+            f"No pair is predicted to lose separation within {predicted.get('horizon_s')} seconds."
+        )
+
+    motion = payload.get("motion") or {}
+    if motion.get("events"):
+        lines.append("Manoeuvres seen in the recent tracks:")
+        for item in motion["events"][:10]:
+            lines.append(f"  {item['callsign']} — {item['detail']} ({item['kind']})")
+        lines.append("  " + motion.get("disclaimer", ""))
+    elif motion:
+        lines.append("No unusual manoeuvre in the tracks seen so far.")
+
     if detections.get("disclaimer"):
         lines.append(
-            "Note for the answer: this is a snapshot of position reports, not a conflict "
-            "prediction — say so if you report a conflict."
+            "Note for the answer: pairs currently inside the minimum come from a snapshot; "
+            "pairs in the 'predicted' list are projections. Keep the two separate and say "
+            "so when you report them."
         )
     return "\n".join(line for line in lines if line)
