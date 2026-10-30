@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "./types";
 
 /** The chat panel, kept deliberately plain.
@@ -122,7 +123,7 @@ function Message({ message }: { message: ChatMessage }) {
   return (
     <article className="chat-answer">
       <div className="chat-answer-body">
-        {message.text ? <ReactMarkdown>{message.text}</ReactMarkdown> : <span className="chat-dots">…</span>}
+        {message.text ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown> : <span className="chat-dots">…</span>}
       </div>
 
       {message.sources && message.sources.length > 0 && (

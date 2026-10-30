@@ -54,6 +54,9 @@ def test_state_normalisation_uses_metres_per_second_and_feet():
 
 
 def test_credentials_default_to_anonymous(monkeypatch):
+    # The test must not depend on whether this machine happens to hold a credential
+    # file: neutralise the loader, then assert on the environment alone.
+    monkeypatch.setattr(opensky.envfile, "load", lambda **_: [])
     monkeypatch.delenv("OPENSKY_CLIENT_ID", raising=False)
     monkeypatch.delenv("OPENSKY_CLIENT_SECRET", raising=False)
     assert opensky.credential_mode() == "anonymous"

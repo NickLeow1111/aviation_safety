@@ -209,6 +209,28 @@ to fill the gap.
 Upload a `.md`, `.txt`, `.json` or `.csv` through **Upload file** and it is indexed
 for citation; a CSV does both jobs (events *and* citable text).
 
+### Asking about the traffic, from the map
+
+The map carries its own assistant panel on the right, so a question about what is on
+screen does not mean switching views and losing the picture. It reads the current
+map bounds, and only when the live layer is on — so a question costs the credits of
+one cached snapshot rather than a fresh request per keystroke.
+
+Questions it can actually answer, because the server computes the signals:
+
+- *"Any unusual flight paths right now?"* — a turn sharper than 30° between two
+  snapshots, an emergency squawk (7500/7600/7700), fast and low (<3000 ft above
+  250 kt), extreme vertical rate (>6000 ft/min), excessive ground speed on the
+  ground, or loitering slowly at altitude.
+- *"Who is inside the separation minimum?"* — pairs inside the horizontal **and**
+  vertical minima, named with the distance and vertical gap.
+- *"What is the fastest aircraft in view?"*, *"what did the bulletin say about hold
+  short lines?"* — the same assistant, the same citations.
+
+The heuristics rank what to look at; they do not claim an aircraft is in difficulty,
+and both the panel and the answer say so. A 30° turn between snapshots is not a
+manoeuvre — it is a reason to look.
+
 ### Grounding on live traffic
 
 When the map's live layer is on, the client sends `live_enabled` and the current

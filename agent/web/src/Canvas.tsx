@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { VegaLite } from "react-vega";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChartArtifact, ToolTrace } from "./types";
 
 type OpsMetric = { label: string; value: string; detail: string };
@@ -94,7 +95,7 @@ export function Canvas({
           ) : lastAnswer ? (
             <div className="answer-card" data-canvas-answer>
               <span className="answer-card-label">Grounded answer</span>
-              <ReactMarkdown>{lastAnswer}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{lastAnswer}</ReactMarkdown>
             </div>
           ) : (
             <div className="empty-state-card">

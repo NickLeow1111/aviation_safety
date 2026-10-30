@@ -13,6 +13,8 @@ import {
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { UploadPanel } from "./UploadPanel";
+import { Chat } from "./Chat";
+import { useAssistant } from "./useAssistant";
 
 /** The map view: where safety events actually happened.
  *
@@ -98,10 +100,26 @@ type Rules = {
   enabled: boolean;
 };
 
+type Anomaly = {
+  kind: string;
+  callsign: string;
+  icao24: string;
+  detail: string;
+  lat?: number | null;
+  lon?: number | null;
+};
+
+type Anomalies = {
+  flags: Anomaly[];
+  summary: string;
+  disclaimer?: string;
+};
+
 type LivePayload = {
   aircraft: Aircraft[];
   rules?: Rules;
   detections?: Detections;
+  anomalies?: Anomalies;
   count: number;
   mode: string;
   credits_used: number;
@@ -211,6 +229,8 @@ export function MapView({
   const [rules, setRules] = useState<Rules | null>(null);
   const [rulesBusy, setRulesBusy] = useState(false);
   const [flagged, setFlagged] = useState<Detections | null>(null);
+  const [unusual, setUnusual] = useState<Anomalies | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(true);
   const [aircraft, setAircraft] = useState<Aircraft | null>(null);
 
   // ---- map lifecycle -----------------------------------------------------
@@ -397,6 +417,18 @@ export function MapView({
   const onLiveChangeRef = useRef(onLiveChange);
   onLiveChangeRef.current = onLiveChange;
 
+  // The panel asks about what is on screen: current bounds, and only when the live
+  // layer is actually on — otherwise each question would spend OpenSky credits.
+  const assistant = useAssistant(() => {
+    const instance = map.current;
+    if (!instance || !liveRef.current) return { enabled: false, bbox: null };
+    const bounds = instance.getBounds();
+    return {
+      enabled: true,
+      bbox: [bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()],
+    };
+  });
+
   const fetchLive = useCallback(async () => {
     const instance = map.current;
     if (!instance) return;
@@ -440,6 +472,7 @@ export function MapView({
       const liveBody = body as LivePayload;
       if (liveBody.rules) setRules(liveBody.rules);
       setFlagged(liveBody.detections ?? null);
+      setUnusual(liveBody.anomalies ?? null);
       onLiveChangeRef.current?.({
         enabled: true,
         bbox: bbox.split(",").map(Number),
@@ -476,6 +509,7 @@ export function MapView({
     if (!live) {
       setLiveNote(null);
       setFlagged(null);
+      setUnusual(null);
       onLiveChangeRef.current?.({ enabled: false, bbox: null });
       const instance = map.current;
       const source = instance?.getSource("aircraft") as GeoJSONSource | undefined;
@@ -580,7 +614,7 @@ export function MapView({
     }));
 
   return (
-    <div className="map-view">
+    <div className={`map-view ${assistantOpen ? "map-view--assistant" : ""}`}>
       <aside className="map-rail">
         <div className="map-rail-head">
           <h2>Safety events</h2>
@@ -707,6 +741,16 @@ export function MapView({
                         ? ` · ${item.vertical_ft} ft`
                         : ""}
                     </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {unusual && unusual.flags.length > 0 && (
+              <ul className="detection-list" data-unusual-list>
+                {unusual.flags.slice(0, 5).map((item) => (
+                  <li key={`${item.icao24}-${item.kind}`} className="is-unusual">
+                    <strong>{item.callsign}</strong>
+                    <span>{item.detail}</span>
                   </li>
                 ))}
               </ul>
@@ -906,6 +950,42 @@ export function MapView({
           </div>
         )}
       </div>
+
+      {assistantOpen ? (
+        <aside className="map-assistant" data-map-assistant>
+          <div className="map-assistant-head">
+            <span>Ask the traffic</span>
+            <button
+              className="map-assistant-close"
+              onClick={() => setAssistantOpen(false)}
+              aria-label="Hide the assistant"
+              data-assistant-toggle
+            >
+              ×
+            </button>
+          </div>
+          <Chat
+            messages={assistant.messages}
+            busy={assistant.busy}
+            onSend={(text) => void assistant.send(text)}
+            ready="ready"
+            liveGrounding={live}
+            suggestions={[
+              "Any unusual flight paths right now?",
+              "Which aircraft are inside the separation minimum?",
+              "What is the fastest aircraft in view?",
+            ]}
+          />
+        </aside>
+      ) : (
+        <button
+          className="map-assistant-open"
+          onClick={() => setAssistantOpen(true)}
+          data-assistant-toggle
+        >
+          Ask
+        </button>
+      )}
 
       {showUpload && (
         <UploadPanel onClose={() => setShowUpload(false)} onImported={() => void load()} />

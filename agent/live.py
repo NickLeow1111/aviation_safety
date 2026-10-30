@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+import anomaly
 import detect
 import opensky
 import rulebook
@@ -19,6 +20,7 @@ async def snapshot(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
     rules = rulebook.load(conn)
     payload["rules"] = rules.as_dict()
     payload["detections"] = detect.evaluate(payload["aircraft"], rules)
+    payload["anomalies"] = anomaly.find(payload["aircraft"])
     return payload
 
 
@@ -55,6 +57,15 @@ def live_context_block(payload: dict[str, Any]) -> str:
             )
     else:
         lines.append("No aircraft is above the speed limit.")
+
+    unusual = payload.get("anomalies") or {}
+    if unusual.get("flags"):
+        lines.append("Unusual flight behaviour in this snapshot:")
+        for item in unusual["flags"][:12]:
+            lines.append(f"  {item['callsign']} — {item['detail']} ({item['kind']})")
+        lines.append("  " + unusual.get("disclaimer", ""))
+    elif unusual:
+        lines.append("No unusual flight behaviour detected in this snapshot.")
 
     if detections.get("disclaimer"):
         lines.append(
