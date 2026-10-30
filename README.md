@@ -133,12 +133,23 @@ degrees, 400 credits/day anonymous, 4000/day with OAuth2 client credentials. So:
   account.
 
 Credentials are optional — without them the app runs anonymously on the smaller
-budget. Put them in `agent/.env.local`:
+budget. To add them, run the script on the machine that serves the app:
 
+```bash
+./scripts/set_opensky_creds.sh          # hidden prompts, never echoed or logged
+./scripts/set_opensky_creds.sh --check  # is a credential present? no values shown
 ```
-OPENSKY_CLIENT_ID=...
-OPENSKY_CLIENT_SECRET=...
-```
+
+It writes `agent/.env.local` with mode 0600 (gitignored, verified), and the app
+loads that file at boot (`agent/envfile.py`) — a real environment variable still
+wins, `.env.local` overrides `.env`. Restart the app afterwards and check
+`GET /api/live/status` reports `"mode": "authenticated"`.
+
+**GitHub repository secrets do not configure a running server.** They are readable
+only by Actions workflows, so storing them there does nothing until a workflow
+deploys them — which needs a self-hosted runner on this host or inbound SSH.
+Keep the live credentials on the machine; keep a copy in GitHub only if you also
+want CI to deploy them.
 
 Live ADS-B is **not surveillance grade**: 5–15 s updates, MLAT gaps, no TCAS, no
 Mode C-only traffic. The aircraft card says so.

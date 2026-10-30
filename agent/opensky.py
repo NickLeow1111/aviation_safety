@@ -18,6 +18,7 @@ never logged and never echoed back through the API.
 from __future__ import annotations
 
 import asyncio
+import envfile
 import json
 import os
 import time
@@ -86,6 +87,13 @@ class Usage:
 
 
 def credentials() -> tuple[str | None, str | None]:
+    # Load lazily so a CLI call and the server both see agent/.env.local, and so a
+    # credentials file added after boot is picked up without touching app.py.
+    if not (os.environ.get("OPENSKY_CLIENT_ID") and os.environ.get("OPENSKY_CLIENT_SECRET")):
+        try:
+            envfile.load()
+        except Exception:  # noqa: BLE001 - never break the poller over a bad file
+            pass
     return os.environ.get("OPENSKY_CLIENT_ID"), os.environ.get("OPENSKY_CLIENT_SECRET")
 
 

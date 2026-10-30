@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import assistant
+import envfile
 import store
 from api_assistant import router as assistant_router
 from api_events import router as events_router
@@ -33,6 +34,9 @@ log = logging.getLogger("safety-intel-bot")
 # driver, missing Azure deps) does NOT crash uvicorn before it can bind the
 # port. Instead we capture the error and surface it via /readyz and /chat, so
 # the container starts, the startup probe passes, and the logs show the cause.
+# Credentials live in agent/.env.local; read them before anything asks for them.
+envfile.load()
+
 _AGENT_IMPORT_ERROR: str | None = None
 try:
     from agent import run_chat_stream
