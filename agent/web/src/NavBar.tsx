@@ -5,6 +5,8 @@ export function NavBar({
   historyCount,
   user,
   onLogout,
+  view = "chat",
+  onViewChange,
 }: {
   onNewChat: () => void;
   onHistory: () => void;
@@ -12,6 +14,8 @@ export function NavBar({
   historyCount: number;
   user?: { name: string; role: string } | null;
   onLogout?: () => void;
+  view?: "chat" | "map";
+  onViewChange?: (view: "chat" | "map") => void;
 }) {
   return (
     <nav className="navbar">
@@ -24,6 +28,30 @@ export function NavBar({
         <span className="navbar-title">Safety Intelligence Tool</span>
       </div>
       <div className="navbar-actions">
+        <button
+          className={`navbar-btn ${view === "map" ? "navbar-btn--active" : ""}`}
+          data-nav-map
+          onClick={() => onViewChange?.("map")}
+          title="Map of safety events"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+            <line x1="8" y1="2" x2="8" y2="18" />
+            <line x1="16" y1="6" x2="16" y2="22" />
+          </svg>
+          Map
+        </button>
+        <button
+          className={`navbar-btn ${view === "chat" ? "navbar-btn--active" : ""}`}
+          data-nav-chat
+          onClick={() => onViewChange?.("chat")}
+          title="Back to the conversation"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          Chat
+        </button>
         <button className="navbar-btn" onClick={onNewChat} title="Start a new conversation">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 5v14" /><path d="M5 12h14" />

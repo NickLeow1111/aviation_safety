@@ -1,0 +1,9 @@
+date,time,location,type,severity,description,registration
+2026-10-12,09:14,WSSS,runway_incursion,high,Ground vehicle crossed the RWY 02L hold short line without clearance,
+2026-10-12,14:30,WSAP,loss_of_separation,critical,Two departures came within 2.1 NM laterally and 600 ft vertically,9V-TAC
+2026-10-13,08:05,"1°21'0.7""N 103°59'38.4""E",bird_strike,medium,Multiple bird strike on climb out; no damage found,9V-BRD
+2026-10-13,,WSSS,go_around,low,Go-around flown because the runway was still occupied,9V-GAR
+2026-10-14,22:10,WSMC,runway_incursion,medium,Tow crew entered the active runway without clearance,
+2026-10-15,11:00,"1.3502, 103.9940",external_damage,high,Ground equipment contact at stand B22,9V-EXT
+2026-10-16,06:45,XXXX,other,unknown,Deliberately unplaceable code - this row must fail the preview,
+2026-10-16,17:20,WMKK,taxi_error,high,Aircraft taxied past the CAT II hold point,9M-TXI

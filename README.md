@@ -72,6 +72,50 @@ with store.connect() as conn:
     counts = store.count_by_type(conn, bbox=(1.20, 103.60, 1.50, 104.10))
 ```
 
+## The map view
+
+`agent/web/src/MapView.tsx` draws the events on a MapLibre canvas with a filter
+rail (time window, severity, type, source) and a table that flies the map to the
+row you click. Every marker can be interrogated: the detail panel shows the
+event's `provenance`, so a dot is never just a dot.
+
+Basemap is plain OpenStreetMap raster — no key, no account. That is fine for a
+POC and **not** fine for production traffic: OSM's tile usage policy forbids it.
+`BASEMAP_TILES` in `MapView.tsx` is the one line to change before this ships.
+
+### Uploading events
+
+Drop a CSV (or upload one) and the server returns a preview before anything is
+written: each row with how its position was resolved and how its time was read,
+the rows that cannot be placed listed with the reason, and — only then — an
+Import button.
+
+| what the file says | what happens |
+|---|---|
+| `lat`,`lon` columns | used directly |
+| `1.3502, 103.9940` or `1°21'0.7"N 103°59'38.4"E` in either column | parsed as coordinates |
+| `WSSS` / `SIN` | resolved against the aerodrome reference |
+| `WSMC` (an alias) | resolved, and the alias is recorded in provenance |
+| `near WSSS` | resolved to the field |
+| `near WSSS 5NM` | **refused** — a radial without a bearing cannot be placed |
+| `XXXX` or blank | **refused** — never guessed, never defaulted to (0, 0) |
+| date with no time | accepted at 00:00 UTC, and the provenance says so |
+
+Re-uploading the same file adds nothing: `external_ref` is a hash of the row, and
+the unique index refuses the duplicate.
+
+### Endpoints
+
+```
+GET  /api/events          bbox, since, until, types, severities, place, source, limit
+GET  /api/events/places   aerodrome autocomplete
+POST /api/events/preview  parse + geocode, write nothing
+POST /api/events/import   parse + geocode, write everything that passed
+```
+
+Preview and import run the same parser — what the preview promises is what the
+import writes.
+
 ## Tests
 
 ```bash
@@ -86,7 +130,7 @@ Pure logic only — no database, no Azure. `tests/conftest.py` stubs the heavy S
 |---|---|
 | 0 · repo hygiene (untrack `.env`, drop `.bak`, this README) | done |
 | 1 · event store + seed + tests | done |
-| 2 · map canvas, event table, CSV/XLSX upload with geocode preview | next |
+| 2 · map canvas, event table, CSV upload with geocode preview | done (CSV; XLSX refused with advice) |
 | 3 · OpenSky live poller (server-side, credit-budgeted) | needs client credentials |
 | 4 · derived detections (loss of separation, runway incursion) | after 3 |
 | 5 · agent tools over the map (`geo_query`, `map_spec`, `explain_event`) | after 2 |

@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Chat } from "./Chat";
 import { Canvas } from "./Canvas";
 import { NavBar } from "./NavBar";
 import { HistoryPanel } from "./HistoryPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { LoginPage } from "./LoginPage";
+// Split out: MapLibre is most of the bundle, and nobody needs it to read a chat
+// message. The map chunk loads the first time somebody opens the map.
+const MapView = lazy(() => import("./MapView").then((module) => ({ default: module.MapView })));
 import { streamChat } from "./sse";
 import type { ChartArtifact, ChatMessage, ChatSession, ToolTrace } from "./types";
 
@@ -67,6 +70,7 @@ function saveSettings(settings: { customPrompt: string; theme: Theme }) {
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [view, setView] = useState<"chat" | "map">("chat");
   const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [ready, setReady] = useState<ReadyState>("checking");
   const [readyMsg, setReadyMsg] = useState("");
@@ -230,6 +234,8 @@ export default function App() {
         historyCount={chatHistory.length}
         user={user}
         onLogout={handleLogout}
+        view={view}
+        onViewChange={setView}
       />
 
       {showHistory && (
@@ -251,6 +257,11 @@ export default function App() {
         />
       )}
 
+      {view === "map" ? (
+        <Suspense fallback={<div className="map-loading">Loading the map…</div>}>
+          <MapView />
+        </Suspense>
+      ) : (
       <div className="app-shell">
         <Chat
           messages={messages}
@@ -270,6 +281,7 @@ export default function App() {
           />
         </main>
       </div>
+      )}
     </div>
   ) : (
     <LoginPage onLogin={handleLogin} />

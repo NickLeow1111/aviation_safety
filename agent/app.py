@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 
 from fastapi import FastAPI, HTTPException
@@ -20,7 +21,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from mock_chat import run_mock_chat_stream
+from api_events import router as events_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("safety-intel-bot")
@@ -38,7 +39,12 @@ except Exception as _e:  # noqa: BLE001
     log.exception("Failed to import agent module at startup")
 
 
+# Module workers must be served as JavaScript or the browser refuses to start them,
+# and not every system mime database maps .mjs.
+mimetypes.add_type("text/javascript", ".mjs")
+
 app = FastAPI(title="Safety Intelligence Bot")
+app.include_router(events_router)
 
 
 def _demo_mode_enabled() -> bool:
@@ -91,6 +97,11 @@ async def chat(body: ChatIn):
     async def stream():
         try:
             if _demo_mode_enabled():
+                # Imported here, not at module scope: mock_chat pulls in tools/, which
+                # pulls in pyodbc, and a missing ODBC driver should not stop uvicorn
+                # from binding the port and serving the map API.
+                from mock_chat import run_mock_chat_stream
+
                 runner = run_mock_chat_stream
             elif run_chat_stream is None:
                 raise RuntimeError(

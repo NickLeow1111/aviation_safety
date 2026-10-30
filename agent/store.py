@@ -292,6 +292,18 @@ def query_events(conn: Any, **filters: Any) -> list[dict[str, Any]]:
         return [dict(zip(names, row)) for row in cur.fetchall()]
 
 
+def count_by(conn: Any, column: str, **filters: Any) -> dict[str, int]:
+    """Counts grouped by one column — the legend needs both type and severity."""
+    if column not in ("event_type", "severity", "source", "place_icao"):
+        raise ValueError(f"cannot group by {column!r}")
+    filters.pop("limit", None)
+    filters.pop("order", None)
+    sql, params = build_query(limit=5000, **filters)
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT {column}, count(*) FROM ({sql}) AS matched GROUP BY 1 ORDER BY 2 DESC", params)
+        return {row[0]: row[1] for row in cur.fetchall()}
+
+
 def count_by_type(conn: Any, **filters: Any) -> dict[str, int]:
     """Counts per event type for the same filters — what the legend shows."""
     filters.pop("limit", None)
