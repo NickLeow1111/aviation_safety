@@ -91,7 +91,9 @@ def credentials() -> tuple[str | None, str | None]:
     # credentials file added after boot is picked up without touching app.py.
     if not (os.environ.get("OPENSKY_CLIENT_ID") and os.environ.get("OPENSKY_CLIENT_SECRET")):
         try:
-            envfile.load()
+            # force: a credential file written after boot must be picked up without
+            # a restart, otherwise the loader latches "already loaded, nothing there".
+            envfile.load(force=True)
         except Exception:  # noqa: BLE001 - never break the poller over a bad file
             pass
     return os.environ.get("OPENSKY_CLIENT_ID"), os.environ.get("OPENSKY_CLIENT_SECRET")
