@@ -1,0 +1,116 @@
+{
+  "_source": "OurAirports (ourairports-data/airports.csv, public domain), fetched 2026-10-30. Only the aerodromes referenced by the current occurrence data are kept here; a full copy is fetched on demand rather than committed.",
+  "_note": "lat/lon are the airport reference point in WGS-84 decimal degrees, taken verbatim from OurAirports. Nothing here is estimated.",
+  "aerodromes": {
+    "KATL": {
+      "name": "Hartsfield Jackson Atlanta International Airport",
+      "lat": 33.6367,
+      "lon": -84.428101,
+      "elevation_ft": 1026,
+      "municipality": "Atlanta",
+      "country": "US"
+    },
+    "OMAA": {
+      "name": "Zayed International Airport",
+      "lat": 24.440966,
+      "lon": 54.649237,
+      "elevation_ft": 88,
+      "municipality": "Abu Dhabi",
+      "country": "AE"
+    },
+    "RKSI": {
+      "name": "Incheon International Airport",
+      "lat": 37.469101,
+      "lon": 126.450996,
+      "elevation_ft": 23,
+      "municipality": "Seoul",
+      "country": "KR"
+    },
+    "RPLL": {
+      "name": "Ninoy Aquino International Airport",
+      "lat": 14.5086,
+      "lon": 121.019997,
+      "elevation_ft": 75,
+      "municipality": "Manila",
+      "country": "PH"
+    },
+    "VHHH": {
+      "name": "Hong Kong International Airport",
+      "lat": 22.31184,
+      "lon": 113.914862,
+      "elevation_ft": 28,
+      "municipality": "Hong Kong",
+      "country": "HK"
+    },
+    "WIII": {
+      "name": "Soekarno-Hatta International Airport",
+      "lat": -6.12557,
+      "lon": 106.655998,
+      "elevation_ft": 34,
+      "municipality": "Jakarta",
+      "country": "ID"
+    },
+    "WMKK": {
+      "name": "Kuala Lumpur International Airport",
+      "lat": 2.74558,
+      "lon": 101.709999,
+      "elevation_ft": 69,
+      "municipality": "Sepang",
+      "country": "MY"
+    },
+    "WSAP": {
+      "name": "Paya Lebar Air Base",
+      "lat": 1.36042,
+      "lon": 103.910004,
+      "elevation_ft": 65,
+      "municipality": "Paya Lebar",
+      "country": "SG"
+    },
+    "WSSL": {
+      "name": "Seletar Airport",
+      "lat": 1.41555,
+      "lon": 103.86673,
+      "elevation_ft": 36,
+      "municipality": "Seletar",
+      "country": "SG"
+    },
+    "WSSS": {
+      "name": "Singapore Changi Airport",
+      "lat": 1.35019,
+      "lon": 103.994003,
+      "elevation_ft": 22,
+      "municipality": "Singapore",
+      "country": "SG"
+    },
+    "YSSY": {
+      "name": "Sydney Kingsford Smith International Airport",
+      "lat": -33.946098,
+      "lon": 151.177002,
+      "elevation_ft": 21,
+      "municipality": "Sydney",
+      "country": "AU"
+    },
+    "ZBAA": {
+      "name": "Beijing Capital International Airport",
+      "lat": 40.077349,
+      "lon": 116.596702,
+      "elevation_ft": 116,
+      "municipality": "Beijing",
+      "country": "CN"
+    },
+    "ZSAM": {
+      "name": "Xiamen Gaoqi International Airport",
+      "lat": 24.543889,
+      "lon": 118.127454,
+      "elevation_ft": 59,
+      "municipality": "Xiamen",
+      "country": "CN"
+    }
+  },
+  "aliases": {
+    "WSMC": {
+      "target": "WSAP",
+      "reason": "WSMC is not an ICAO location indicator and does not exist in OurAirports. The occurrence row that uses it is filed by a Paya Lebar organisation, so it is mapped to Paya Lebar and flagged, not silently trusted."
+    }
+  }
+}

@@ -1,4 +1,23 @@
 .DS_Store
+
+# ---- local environment ----------------------------------------------------
+# .env carries the subscription id and resource names; .env.local will carry the
+# OpenSky client credentials. Neither belongs in git. Keep .env.example tracked.
+agent/.env
+agent/.env.foundry
+agent/.env.local
+
+# ---- python ---------------------------------------------------------------
 agent/.venv/
 __pycache__/
 *.pyc
+agent/.pytest_cache/
+
+# ---- web / node -----------------------------------------------------------
+agent/web/node_modules/
+agent/web/tsconfig.tsbuildinfo
+agent/web/dist/
+
+# ---- local data -----------------------------------------------------------
+# Full reference datasets are fetched on demand, not committed.
+data/*.csv
