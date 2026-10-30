@@ -60,8 +60,8 @@ type Aircraft = {
   lon: number | null;
   altitude_ft: number | null;
   ground_speed_kt: number | null;
-  on_ground: boolean;
   track_deg: number | null;
+  on_ground: boolean;
   vertical_rate_fpm: number | null;
 };
 
@@ -146,6 +146,45 @@ function when(value: string): string {
 }
 
 setWorkerUrl(maplibreWorkerUrl);
+
+/** Draw an airliner silhouette pointing north, so a symbol layer can rotate it by
+ *  the reported track. Canvas rather than a sprite sheet: no extra asset to ship,
+ *  and the colour variants stay in one place. */
+function planeImage(colour: string, outline = "#ffffff"): ImageData {
+  const size = 48;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("2d canvas unavailable");
+
+  ctx.beginPath();
+  ctx.moveTo(24, 3);                                   // nose
+  ctx.bezierCurveTo(26.4, 8, 27.6, 13, 27.6, 19);      // fuselage, right
+  ctx.lineTo(45, 31);                                  // right wing leading edge
+  ctx.lineTo(45, 35);
+  ctx.lineTo(27.6, 28);                                // wing trailing edge
+  ctx.lineTo(27.6, 38);
+  ctx.lineTo(34, 42);                                  // right tailplane
+  ctx.lineTo(34, 45);
+  ctx.lineTo(24, 42.5);
+  ctx.lineTo(14, 45);                                  // left tailplane
+  ctx.lineTo(14, 42);
+  ctx.lineTo(20.4, 38);
+  ctx.lineTo(20.4, 28);
+  ctx.lineTo(3, 35);                                   // left wing
+  ctx.lineTo(3, 31);
+  ctx.lineTo(20.4, 19);
+  ctx.bezierCurveTo(20.4, 13, 21.6, 8, 24, 3);         // fuselage, left
+  ctx.closePath();
+
+  ctx.fillStyle = colour;
+  ctx.strokeStyle = outline;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fill();
+  return ctx.getImageData(0, 0, size, size);
+}
 
 export function MapView({
   onLiveChange,
@@ -236,34 +275,68 @@ export function MapView({
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
+      // Aircraft icons, drawn once per colour variant. Conflict and overspeed keep
+      // their own colour so the eye finds them without reading the panel.
+      for (const [name, colour] of [
+        ["plane", "#1b2a4a"],
+        ["plane-conflict", "#d93a3a"],
+        ["plane-overspeed", "#e07b2a"],
+        ["plane-ground", "#7d8898"],
+      ] as const) {
+        if (!instance.hasImage(name)) {
+          instance.addImage(name, planeImage(colour), { pixelRatio: 2 });
+        }
+      }
+      if (!instance.hasImage("plane-shadow")) {
+        instance.addImage("plane-shadow", planeImage("#0b1524", "#0b1524"), { pixelRatio: 2 });
+      }
       instance.addLayer({
-        id: "aircraft-halo",
-        type: "circle",
+        id: "aircraft-shadow",
+        type: "symbol",
         source: "aircraft",
-        paint: { "circle-radius": 9, "circle-color": "#0f1a2e", "circle-opacity": 0.12 },
+        layout: {
+          "icon-image": "plane-shadow",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.74, 8, 0.96, 12, 1.22],
+          "icon-rotate": ["coalesce", ["get", "track_deg"], 0],
+          "icon-rotation-alignment": "map",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-offset": [1.2, 1.2],
+        },
+        paint: { "icon-opacity": 0.22 },
       });
       instance.addLayer({
-        id: "aircraft-dot",
-        type: "circle",
+        id: "aircraft-plane",
+        type: "symbol",
         source: "aircraft",
-        paint: {
-          "circle-radius": 4.5,
-          "circle-color": [
+        layout: {
+          "icon-image": [
             "case",
-            ["==", ["get", "status"], "conflict"], "#d93a3a",
-            ["==", ["get", "status"], "overspeed"], "#e07b2a",
-            ["get", "on_ground"], "#6b7785", "#0f1a2e",
+            ["==", ["get", "status"], "conflict"], "plane-conflict",
+            ["==", ["get", "status"], "overspeed"], "plane-overspeed",
+            ["get", "on_ground"], "plane-ground",
+            "plane",
           ],
-          "circle-stroke-width": 1.5,
-          "circle-stroke-color": "#ffffff",
+          // Sized like a traffic display: legible at regional zoom, not a speck.
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 4, 0.62, 8, 0.82, 12, 1.05],
+          "icon-rotate": ["coalesce", ["get", "track_deg"], 0],
+          "icon-rotation-alignment": "map",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
         },
       });
-      instance.on("click", "aircraft-dot", (event: MapLayerMouseEvent) => {
+      instance.on("click", "aircraft-plane", (event: MapLayerMouseEvent) => {
         const feature = event.features?.[0];
         if (!feature) return;
         const properties = feature.properties as Record<string, unknown>;
         const id = String(properties.icao24 ?? "");
         setAircraft(liveRef.current?.aircraft.find((item) => item.icao24 === id) ?? null);
+      });
+      instance.on("mouseenter", "aircraft-plane", () => {
+        instance.getCanvas().style.cursor = "pointer";
+      });
+      instance.on("mouseleave", "aircraft-plane", () => {
+        instance.getCanvas().style.cursor = "";
       });
       instance.on("mouseenter", "event-dot", () => {
         instance.getCanvas().style.cursor = "pointer";
@@ -440,6 +513,7 @@ export function MapView({
           on_ground: item.on_ground,
           callsign: item.callsign ?? item.icao24,
           status: statusFor(item.icao24),
+          track_deg: item.track_deg ?? 0,
         },
       }));
     source.setData({ type: "FeatureCollection", features });
