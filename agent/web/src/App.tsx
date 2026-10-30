@@ -281,7 +281,7 @@ export default function App() {
           <MapView onLiveChange={setLiveState} />
         </Suspense>
       ) : (
-      <div className="app-shell">
+      <div className={`app-shell ${charts.length === 0 ? "app-shell--solo" : ""}`}>
         <Chat
           liveGrounding={liveState.enabled}
           messages={messages}
@@ -293,14 +293,19 @@ export default function App() {
           suggestions={STARTER_PROMPTS}
         />
 
-        <main className="workspace single-flow">
-          <Canvas
-            charts={charts}
-            traces={traces}
-            lastPrompt={latestUserPrompt}
-            lastAnswer={latestAnswer}
-          />
-        </main>
+        {/* The output pane exists for artefacts a chart or tool produced. With
+            none, it would only repeat the answer that is already in the thread,
+            so it stays out of the way and the conversation gets the width. */}
+        {charts.length > 0 && (
+          <main className="workspace single-flow">
+            <Canvas
+              charts={charts}
+              traces={traces}
+              lastPrompt={latestUserPrompt}
+              lastAnswer={latestAnswer}
+            />
+          </main>
+        )}
       </div>
       )}
     </div>

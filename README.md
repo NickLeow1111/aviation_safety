@@ -143,6 +143,36 @@ OPENSKY_CLIENT_SECRET=...
 Live ADS-B is **not surveillance grade**: 5–15 s updates, MLAT gaps, no TCAS, no
 Mode C-only traffic. The aircraft card says so.
 
+### Detection rules
+
+The checks are yours to set, and the assistant reads them out of plain sentences:
+
+> "flag anything closer than 2.5 nautical miles or faster than 500 knots"
+> "set the separation minimum to 3 nm, speed limit to 450 knots"
+> "turn off the separation checks"
+
+| field | meaning | default |
+|---|---|---|
+| `min_separation_nm` | horizontal minimum between two aircraft | 3.0 NM |
+| `min_vertical_ft` | vertical minimum; a pair must breach **both** to be reported | 1000 ft |
+| `max_speed_kt` | ground-speed limit | 480 kt |
+| `ignore_ground` | exclude aircraft on the ground | true |
+
+Rules are stored once, in one row, because the map, the API and the assistant must
+agree — a check that answers differently depending on who asked is how people stop
+trusting both. Change them in the map's rule panel or in a sentence; both write the
+same row, and the assistant applies a change *before* it answers, so the reply and
+the map are scored against the same numbers in the same turn.
+
+A pair is only a conflict when it is inside the horizontal **and** vertical minima.
+Horizontally close but 3000 ft apart is legal and is not reported. Missing altitude
+is reported as proximity with `vertical_ft: null` rather than assumed safe.
+
+**It is not a conflict predictor.** ADS-B updates every 5–15 s and the data carries
+no intent, route or vertical-rate trend, so a pair inside the threshold is reported
+as *currently inside it*. Every result carries that disclaimer and the assistant is
+instructed to repeat it.
+
 ## The assistant
 
 The chat panel answers from **what the user uploaded** plus the event store, and
@@ -168,10 +198,20 @@ to fill the gap.
 Upload a `.md`, `.txt`, `.json` or `.csv` through **Upload file** and it is indexed
 for citation; a CSV does both jobs (events *and* citable text).
 
+### Grounding on live traffic
+
+When the map's live layer is on, the client sends `live_enabled` and the current
+`bbox` with each question, and the assistant grounds on the **same cached snapshot
+the map is drawing**, scored by the same rules — so it never explains a picture the
+user is not looking at. With the layer off, nothing is fetched: live data costs
+OpenSky credits and nobody asked for it.
+
 ### Endpoints
 
 ```
-GET  /api/live              ?bbox=min_lat,min_lon,max_lat,max_lon
+GET  /api/live              ?bbox=min_lat,min_lon,max_lat,max_lon (aircraft + detections)
+GET  /api/detect/rules      thresholds in force
+PUT  /api/detect/rules      partial update, merged and persisted
 GET  /api/live/status       credential mode, credits used today
 GET  /api/documents         corpus summary
 POST /api/documents         index a file for citation
@@ -200,7 +240,7 @@ Pure logic only — no database, no Azure. `tests/conftest.py` stubs the heavy S
 | 2 · map canvas, event table, CSV upload with geocode preview | done (CSV; XLSX refused with advice) |
 | 3 · OpenSky live poller (server-side, credit-budgeted) | done — anonymous by default, OAuth2 upgradeable |
 | 4 · derived detections (loss of separation, runway incursion) | after 3 |
-| 5 · grounded assistant over uploaded files + event store | done (citations, fuzzy fallback) |
+| 5 · grounded assistant over uploaded files + event store + live traffic | done (citations, user-set detection rules) |
 
 Deliberately out of scope for now: vector search (OpenSky embeddings aside, the
 doc corpus is small), and any bulk historical ADS-B import — the free OpenSky

@@ -2790,3 +2790,13 @@ table.data tbody tr:hover {
 .detection-list li.is-overspeed { border-color: rgba(224, 123, 42, 0.35); background: rgba(224, 123, 42, 0.07); }
 .detection-list strong { font-weight: 600; }
 .detection-list span { color: var(--muted); white-space: nowrap; }
+
+/* Solo mode: one centred reading column, no duplicate output pane. */
+.app-shell--solo { grid-template-columns: minmax(0, 1fr); }
+.app-shell--solo .chat-shell--minimal { border-right: none; }
+.app-shell--solo .chat-top,
+.app-shell--solo .messages--minimal,
+.app-shell--solo .chat-composer {
+  width: 100%; max-width: 780px; margin-left: auto; margin-right: auto;
+  box-sizing: border-box;
+}
