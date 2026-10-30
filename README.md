@@ -166,7 +166,7 @@ The checks are yours to set, and the assistant reads them out of plain sentences
 |---|---|---|
 | `min_separation_nm` | horizontal minimum between two aircraft | 3.0 NM |
 | `min_vertical_ft` | vertical minimum; a pair must breach **both** to be reported | 1000 ft |
-| `max_speed_kt` | ground-speed limit | 480 kt |
+| `speed_bands` | ground-speed limit **per altitude band** | 250 kt below 10,000 ft, 480 kt above |
 | `ignore_ground` | exclude aircraft on the ground | true |
 
 Rules are stored once, in one row, because the map, the API and the assistant must
@@ -174,6 +174,11 @@ agree — a check that answers differently depending on who asked is how people 
 trusting both. Change them in the map's rule panel or in a sentence; both write the
 same row, and the assistant applies a change *before* it answers, so the reply and
 the map are scored against the same numbers in the same turn.
+
+Speed limits are banded by altitude because a single number cannot be right: 450 kt
+at 35,000 ft is ordinary cruise, 450 kt at 2,000 ft is an emergency. One global limit
+either flags all of cruise (what it did) or none of the dangerous cases. Unknown
+altitude gets the most permissive band rather than a guessed breach.
 
 A pair is only a conflict when it is inside the horizontal **and** vertical minima.
 Horizontally close but 3000 ft apart is legal and is not reported. Missing altitude

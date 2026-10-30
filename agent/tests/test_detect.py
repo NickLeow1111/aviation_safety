@@ -94,14 +94,68 @@ def test_unknown_altitude_still_reports_proximity():
 # --------------------------------------------------------------------------- #
 
 def test_overspeed_is_flagged_with_its_speed():
-    result = detect.evaluate([aircraft("FAST1", 1.35, 103.99, speed=520)], detect.Rules(max_speed_kt=480))
+    result = detect.evaluate(
+        [aircraft("FAST1", 1.35, 103.99, alt=35000, speed=520)], detect.Rules(max_speed_kt=480)
+    )
     assert len(result["overspeed"]) == 1
     assert result["overspeed"][0]["ground_speed_kt"] == 520
+    assert result["overspeed"][0]["over_by_kt"] == 40
 
 
 def test_at_the_limit_is_not_over_it():
-    result = detect.evaluate([aircraft("EDGE1", 1.35, 103.99, speed=480)], detect.Rules(max_speed_kt=480))
+    result = detect.evaluate(
+        [aircraft("EDGE1", 1.35, 103.99, alt=35000, speed=480)], detect.Rules(max_speed_kt=480)
+    )
     assert result["overspeed"] == []
+
+
+# --------------------------------------------------------------------------- #
+# banded speed limits
+# --------------------------------------------------------------------------- #
+
+def test_cruise_speed_is_legal_high_and_illegal_low():
+    # The bug this fixes: one global number flagged all of cruise as overspeeding.
+    rules = detect.Rules(max_speed_kt=480)
+    high = detect.evaluate([aircraft("HIGH", 1.35, 103.99, alt=35000, speed=470)], rules)
+    low = detect.evaluate([aircraft("LOW", 1.35, 103.99, alt=2000, speed=300)], rules)
+    assert high["overspeed"] == []
+    assert len(low["overspeed"]) == 1
+    assert low["overspeed"][0]["limit_kt"] == 250
+
+
+def test_band_boundary_is_exclusive_below():
+    rules = detect.Rules(max_speed_kt=480)
+    assert rules.limit_for(9999).max_speed_kt == 250
+    assert rules.limit_for(10000).max_speed_kt == 480
+
+
+def test_unknown_altitude_gets_the_permissive_band():
+    rules = detect.Rules(max_speed_kt=480)
+    assert rules.limit_for(None).max_speed_kt == 480
+    result = detect.evaluate([aircraft("NOSPD", 1.35, 103.99, alt=None, speed=420)], rules)
+    assert result["overspeed"] == []
+
+
+def test_overspeed_names_the_band_it_broke():
+    result = detect.evaluate(
+        [aircraft("LOW", 1.35, 103.99, alt=3000, speed=280)], detect.Rules(max_speed_kt=480)
+    )
+    assert result["overspeed"][0]["band"] == "250 kt below 10,000 ft"
+    assert "below 10,000 ft" in result["summary"]
+
+
+def test_custom_bands_round_trip_through_storage():
+    rules = detect.Rules.from_json(
+        {"speed_bands": [{"max_alt_ft": 5000, "max_speed_kt": 200}, {"max_alt_ft": None, "max_speed_kt": 500}]}
+    )
+    assert [band.max_speed_kt for band in rules.bands()] == [200, 500]
+    assert rules.limit_for(4000).max_speed_kt == 200
+    assert rules.limit_for(40000).max_speed_kt == 500
+
+
+def test_bands_gain_an_open_ended_top_if_missing():
+    rules = detect.Rules.from_json({"speed_bands": [{"max_alt_ft": 5000, "max_speed_kt": 200}]})
+    assert rules.bands()[-1].max_alt_ft is None
 
 
 def test_missing_speed_is_not_assumed_fast():

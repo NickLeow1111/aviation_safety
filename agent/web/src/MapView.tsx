@@ -67,8 +67,24 @@ type Aircraft = {
   vertical_rate_fpm: number | null;
 };
 
+/** Speed limits are per altitude band, so the panel edits the low band and the
+ *  ceiling above it rather than a single number that flags all of cruise. */
+function bandEdit(rules: Rules, index: number, patch: Partial<SpeedBand>): Rules {
+  const bands: SpeedBand[] =
+    rules.speed_bands && rules.speed_bands.length
+      ? rules.speed_bands.map((band) => ({ ...band }))
+      : [
+          { max_alt_ft: 10000, max_speed_kt: 250 },
+          { max_alt_ft: null, max_speed_kt: rules.max_speed_kt },
+        ];
+  bands[index] = { ...bands[index], ...patch };
+  return { ...rules, speed_bands: bands, max_speed_kt: bands[bands.length - 1].max_speed_kt };
+}
+
 type Detection = {
   type: string;
+  limit_kt?: number;
+  band?: string;
   a?: string;
   b?: string;
   icao24_a?: string;
@@ -92,12 +108,15 @@ type Detections = {
   disclaimer?: string;
 };
 
+type SpeedBand = { max_alt_ft: number | null; max_speed_kt: number };
+
 type Rules = {
   min_separation_nm: number;
   min_vertical_ft: number;
   max_speed_kt: number;
   ignore_ground: boolean;
   enabled: boolean;
+  speed_bands?: SpeedBand[];
 };
 
 type Anomaly = {
@@ -691,14 +710,44 @@ export function MapView({
                 />
               </label>
               <label>
-                <span>max kt</span>
+                <span>low band alt ft</span>
+                <input
+                  type="number"
+                  step="500"
+                  min="0"
+                  data-rule="band_alt"
+                  value={rules.speed_bands?.[0]?.max_alt_ft ?? 10000}
+                  onChange={(event) => setRules(bandEdit(rules, 0, { max_alt_ft: Number(event.target.value) }))}
+                />
+              </label>
+              <label>
+                <span>low band kt</span>
                 <input
                   type="number"
                   step="10"
                   min="50"
-                  data-rule="max_speed_kt"
-                  value={rules.max_speed_kt}
-                  onChange={(event) => setRules({ ...rules, max_speed_kt: Number(event.target.value) })}
+                  data-rule="band_low_kt"
+                  value={rules.speed_bands?.[0]?.max_speed_kt ?? 250}
+                  onChange={(event) => setRules(bandEdit(rules, 0, { max_speed_kt: Number(event.target.value) }))}
+                />
+              </label>
+              <label>
+                <span>above kt</span>
+                <input
+                  type="number"
+                  step="10"
+                  min="50"
+                  data-rule="band_high_kt"
+                  value={rules.speed_bands?.[rules.speed_bands.length - 1]?.max_speed_kt ?? rules.max_speed_kt}
+                  onChange={(event) => {
+                    const bands = rules.speed_bands ?? [
+                      { max_alt_ft: 10000, max_speed_kt: 250 },
+                      { max_alt_ft: null, max_speed_kt: rules.max_speed_kt },
+                    ];
+                    setRules(bandEdit({ ...rules, speed_bands: bands }, bands.length - 1, {
+                      max_speed_kt: Number(event.target.value),
+                    }));
+                  }}
                 />
               </label>
             </div>
@@ -712,7 +761,11 @@ export function MapView({
                   await fetch("/api/detect/rules", {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(rules),
+                    body: JSON.stringify({
+                      min_separation_nm: rules.min_separation_nm,
+                      min_vertical_ft: rules.min_vertical_ft,
+                      speed_bands: rules.speed_bands,
+                    }),
                   });
                   await fetchLive();
                 } finally {
@@ -760,7 +813,10 @@ export function MapView({
                 {flagged.overspeed.slice(0, 5).map((item) => (
                   <li key={item.icao24} className="is-overspeed">
                     <strong>{item.callsign}</strong>
-                    <span>{item.ground_speed_kt} kt</span>
+                    <span>
+                      {item.ground_speed_kt} kt
+                      {item.limit_kt ? ` (limit ${item.limit_kt})` : ""}
+                    </span>
                   </li>
                 ))}
               </ul>

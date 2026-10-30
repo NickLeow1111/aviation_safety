@@ -104,12 +104,18 @@ class AskIn(BaseModel):
     bbox: list[float] | None = None
 
 
+class SpeedBandIn(BaseModel):
+    max_alt_ft: int | None = None
+    max_speed_kt: int
+
+
 class RulesIn(BaseModel):
     min_separation_nm: float | None = None
     min_vertical_ft: int | None = None
     max_speed_kt: int | None = None
     ignore_ground: bool | None = None
     enabled: bool | None = None
+    speed_bands: list[SpeedBandIn] | None = None
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -156,12 +162,24 @@ def put_rules(body: RulesIn) -> dict[str, Any]:
     """Merge a partial update onto the stored rules and persist."""
     with store.connect() as conn:
         current = rulebook.load(conn)
+        bands = current.speed_bands
+        top_speed = body.max_speed_kt
+        if body.speed_bands is not None:
+            bands = tuple(
+                detect.SpeedBand(band.max_alt_ft, band.max_speed_kt) for band in body.speed_bands
+            )
+            # Keep the legacy scalar in step with the top band. Two fields disagreeing
+            # about the ceiling is exactly how a rule set stops being trustworthy.
+            if top_speed is None and bands:
+                open_ended = [band for band in bands if band.max_alt_ft is None]
+                top_speed = (open_ended or list(bands))[-1].max_speed_kt
         merged = detect.Rules(
             min_separation_nm=body.min_separation_nm if body.min_separation_nm is not None else current.min_separation_nm,
             min_vertical_ft=body.min_vertical_ft if body.min_vertical_ft is not None else current.min_vertical_ft,
-            max_speed_kt=body.max_speed_kt if body.max_speed_kt is not None else current.max_speed_kt,
+            max_speed_kt=top_speed if top_speed is not None else current.max_speed_kt,
             ignore_ground=body.ignore_ground if body.ignore_ground is not None else current.ignore_ground,
             enabled=body.enabled if body.enabled is not None else current.enabled,
+            speed_bands=bands,
         )
         return rulebook.save(conn, merged).as_dict()
 

@@ -30,6 +30,27 @@ DEFAULTS = {
     "enabled": True,
 }
 
+# Speed limits belong to a phase of flight, not to the aircraft. 450 kt at 35,000 ft
+# is ordinary cruise; 450 kt at 2,000 ft is an emergency. One global number flags
+# either everything or nothing, so the limit is banded by altitude with the standard
+# 250 kt below 10,000 ft as the low band.
+DEFAULT_BANDS = (
+    {"max_alt_ft": 10000, "max_speed_kt": 250},
+    {"max_alt_ft": None, "max_speed_kt": 480},
+)
+
+
+@dataclass(frozen=True)
+class SpeedBand:
+    """A speed limit that applies below `max_alt_ft`; None means 'the rest'."""
+
+    max_alt_ft: int | None
+    max_speed_kt: int
+
+    def label(self) -> str:
+        ceiling = "above" if self.max_alt_ft is None else f"below {self.max_alt_ft:,} ft"
+        return f"{self.max_speed_kt} kt {ceiling}"
+
 
 @dataclass(frozen=True)
 class Rules:
@@ -38,9 +59,31 @@ class Rules:
     max_speed_kt: int = 480
     ignore_ground: bool = True
     enabled: bool = True
+    speed_bands: tuple[SpeedBand, ...] = ()
+
+    def bands(self) -> tuple[SpeedBand, ...]:
+        """The bands in force, lowest first, always ending with an open-ended one."""
+        if self.speed_bands:
+            return self.speed_bands
+        return (SpeedBand(10000, 250), SpeedBand(None, self.max_speed_kt))
+
+    def limit_for(self, altitude_ft: float | None) -> SpeedBand:
+        """Which limit applies at this altitude. Unknown altitude gets the most
+        permissive band rather than a guessed breach."""
+        bands = self.bands()
+        if altitude_ft is None:
+            return bands[-1]
+        for band in bands:
+            if band.max_alt_ft is None or altitude_ft < band.max_alt_ft:
+                return band
+        return bands[-1]
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["speed_bands"] = [
+            {"max_alt_ft": band.max_alt_ft, "max_speed_kt": band.max_speed_kt} for band in self.bands()
+        ]
+        return payload
 
     @classmethod
     def from_json(cls, value: Any) -> "Rules":
@@ -60,12 +103,34 @@ class Rules:
             except (TypeError, ValueError):
                 return DEFAULTS[key]
 
+        bands: list[SpeedBand] = []
+        raw_bands = value.get("speed_bands")
+        if isinstance(raw_bands, list):
+            for entry in raw_bands:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    speed = int(float(entry.get("max_speed_kt")))
+                except (TypeError, ValueError):
+                    continue
+                ceiling = entry.get("max_alt_ft")
+                try:
+                    ceiling_value = int(float(ceiling)) if ceiling is not None else None
+                except (TypeError, ValueError):
+                    ceiling_value = None
+                if speed > 0:
+                    bands.append(SpeedBand(ceiling_value, speed))
+        bands.sort(key=lambda band: (band.max_alt_ft is None, band.max_alt_ft or 0))
+        if bands and bands[-1].max_alt_ft is not None:
+            bands.append(SpeedBand(None, max(band.max_speed_kt for band in bands)))
+
         return cls(
             min_separation_nm=max(0.1, number("min_separation_nm", float)),
             min_vertical_ft=max(0, number("min_vertical_ft", int)),
             max_speed_kt=max(1, number("max_speed_kt", int)),
             ignore_ground=bool(value.get("ignore_ground", DEFAULTS["ignore_ground"])),
             enabled=bool(value.get("enabled", DEFAULTS["enabled"])),
+            speed_bands=tuple(bands),
         )
 
 
@@ -138,7 +203,10 @@ def evaluate(aircraft: Iterable[dict[str, Any]], rules: Rules) -> dict[str, Any]
     overspeed: list[dict[str, Any]] = []
     for item in tracked:
         speed = item.get("ground_speed_kt")
-        if speed is None or speed <= rules.max_speed_kt:
+        if speed is None:
+            continue
+        band = rules.limit_for(item.get("altitude_ft"))
+        if speed <= band.max_speed_kt:
             continue
         overspeed.append(
             {
@@ -147,6 +215,9 @@ def evaluate(aircraft: Iterable[dict[str, Any]], rules: Rules) -> dict[str, Any]
                 "icao24": item.get("icao24"),
                 "ground_speed_kt": int(speed),
                 "altitude_ft": item.get("altitude_ft"),
+                "limit_kt": band.max_speed_kt,
+                "band": band.label(),
+                "over_by_kt": int(speed) - band.max_speed_kt,
                 "lat": item.get("lat"),
                 "lon": item.get("lon"),
             }
@@ -154,12 +225,13 @@ def evaluate(aircraft: Iterable[dict[str, Any]], rules: Rules) -> dict[str, Any]
     overspeed.sort(key=lambda item: item["ground_speed_kt"], reverse=True)
 
     filtered = len(all_usable) - len(tracked)
+    band_text = ", ".join(band.label() for band in rules.bands())
     summary = (
         f"{len(tracked)} aircraft checked"
         + (f" ({filtered} on-ground excluded)" if filtered else "")
         + " against "
-        f"{rules.min_separation_nm:g} NM / {rules.min_vertical_ft} ft separation and "
-        f"{rules.max_speed_kt} kt max speed: "
+        f"{rules.min_separation_nm:g} NM / {rules.min_vertical_ft} ft separation and speed limits "
+        f"({band_text}): "
         f"{len(conflicts)} inside separation, {len(overspeed)} above the speed limit."
     )
     return {
