@@ -254,6 +254,24 @@ history. `GET /api/tracks/history?days=7` returns the counts, and the assistant 
 them — labelled as detector output, never confused with the reported events in
 `safety_event`.
 
+### Real events, not decoration
+
+Detections are promoted into the same `safety_event` table as reports and uploads
+(`promote.py`): observed losses of separation, go-arounds and unstable approaches land
+with `source = 'derived'` and carry the arithmetic that produced them — separation in
+NM, vertical gap in feet, the minima in force at the time, and the detector's name.
+
+Three rules keep that record trustworthy:
+
+- **Predictions never become events.** A projection is a prompt to look, not a record.
+- **One row per pair or aircraft per half hour.** `external_ref` is deterministic, so
+  the unique index absorbs re-observation instead of turning one hold into forty rows.
+- **A go-around is normal operations**, stored as `low` severity with wording that
+  says so. It is a statistic about an airport, not an incident list.
+
+Filter the map with the Source chips (`report` / `upload` / `derived`) to see exactly
+which conclusion came from where.
+
 ### Asking about the traffic, from the map
 
 The map carries its own assistant panel on the right, so a question about what is on

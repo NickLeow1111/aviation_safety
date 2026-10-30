@@ -8,13 +8,18 @@ a picture the user is not looking at.
 from __future__ import annotations
 
 import time
+import logging
 from typing import Any, Sequence
 
 import anomaly
 import detect
 import opensky
 import predict
+import promote
 import rulebook
+import store
+
+log = logging.getLogger("safety-intel-bot")
 import tracks
 import tracks_db
 
@@ -33,11 +38,28 @@ async def snapshot(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
             tracks_db.warm(conn)
             tracks_db.persist(conn, payload["aircraft"])
     payload["motion"] = tracks.motion_events()
-    if not payload.get("cached") and payload["motion"]["events"]:
-        tracks_db.persist_events(conn, payload["motion"]["events"])
+    if not payload.get("cached"):
+        if payload["motion"]["events"]:
+            tracks_db.persist_events(conn, payload["motion"]["events"])
+        _store_derived(conn, payload, rules)
     payload["history"] = _history(conn)
     payload["predicted"] = predict.evaluate(payload["aircraft"], rules)
     return payload
+
+
+def _store_derived(conn: Any, payload: dict[str, Any], rules: Any) -> None:
+    """Promote observed conflicts and manoeuvres into the event store.
+
+    A failure here must not cost the user their live picture, so it is logged and
+    rolled back rather than raised: the map is the product, the record is a bonus.
+    """
+    try:
+        events = promote.from_snapshot(payload, rules, promote.load_aerodromes())
+        if events:
+            payload["derived_written"] = store.insert_events(conn, events)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not store derived events: %s: %s", type(exc).__name__, exc)
+        conn.rollback()
 
 
 _history_cache: dict[str, Any] = {"at": 0.0, "data": {}}
