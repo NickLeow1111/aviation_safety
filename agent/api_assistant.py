@@ -15,6 +15,7 @@ import live
 import opensky
 import rulebook
 import store
+import tracks_db
 from api_events import _parse_bbox, _read_upload, _serialise
 
 router = APIRouter(prefix="/api", tags=["live", "documents", "assistant"])
@@ -33,6 +34,20 @@ async def live_traffic(bbox: str = Query(..., description="min_lat,min_lon,max_l
             return await live.snapshot(conn, box)
     except opensky.OpenSkyError as exc:
         raise HTTPException(429 if "budget" in str(exc) else 502, str(exc)) from exc
+
+
+@router.get("/tracks/history")
+def tracks_history(days: int = 7) -> dict[str, Any]:
+    """What the detectors recorded over a window, for review.
+
+    The live panel shows the present; this is how you check whether a rule is
+    firing at the right things, and what the assistant quotes for "this week".
+    """
+    try:
+        with store.connect() as conn:
+            return tracks_db.history_summary(conn, days)
+    except Exception as exc:  # noqa: BLE001 - history is an enhancement
+        raise HTTPException(503, f"track history unavailable: {type(exc).__name__}") from exc
 
 
 @router.get("/live/status")

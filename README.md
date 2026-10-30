@@ -240,6 +240,20 @@ cannot:
 A go-around is a normal, safe manoeuvre. It is reported because it is worth knowing
 about, not because anything went wrong.
 
+The same positions are written to Postgres (`db/003_history.sql`), so history outlives
+the process:
+
+- `aircraft_track` — one row per aircraft per poll, pruned after 7 days
+- `track_event` — the manoeuvres read out of those tracks, de-duplicated per aircraft
+  per kind within 15 minutes (a holding aircraft would otherwise be counted on every
+  poll)
+
+On startup the in-memory store is warmed from `aircraft_track`, so a restart does not
+blind the checks: the first request after a restart already sees ten minutes of
+history. `GET /api/tracks/history?days=7` returns the counts, and the assistant quotes
+them — labelled as detector output, never confused with the reported events in
+`safety_event`.
+
 ### Asking about the traffic, from the map
 
 The map carries its own assistant panel on the right, so a question about what is on

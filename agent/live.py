@@ -7,6 +7,7 @@ a picture the user is not looking at.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, Sequence
 
 import anomaly
@@ -15,6 +16,7 @@ import opensky
 import predict
 import rulebook
 import tracks
+import tracks_db
 
 
 async def snapshot(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
@@ -27,15 +29,37 @@ async def snapshot(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
     # instant of traffic, and recording it twice would invent a stationary aircraft.
     if not payload.get("cached"):
         tracks.record(payload["aircraft"])
+        if tracks_db.ensure_schema(conn):
+            tracks_db.warm(conn)
+            tracks_db.persist(conn, payload["aircraft"])
     payload["motion"] = tracks.motion_events()
+    if not payload.get("cached") and payload["motion"]["events"]:
+        tracks_db.persist_events(conn, payload["motion"]["events"])
+    payload["history"] = _history(conn)
     payload["predicted"] = predict.evaluate(payload["aircraft"], rules)
     return payload
+
+
+_history_cache: dict[str, Any] = {"at": 0.0, "data": {}}
+HISTORY_CACHE_SECONDS = 60.0
+
+
+def _history(conn: Any, days: int = 7) -> dict[str, Any]:
+    """Weekly counts, cached: three queries per keystroke would be wasteful."""
+    now = time.time()
+    if _history_cache["data"] and now - _history_cache["at"] < HISTORY_CACHE_SECONDS:
+        return _history_cache["data"]
+    data = tracks_db.history_summary(conn, days)
+    _history_cache.update({"at": now, "data": data})
+    return data
 
 
 def live_context_block(payload: dict[str, Any]) -> str:
     """Render a snapshot as the text block the assistant is allowed to quote."""
     detections = payload.get("detections") or {}
+    stamp = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
     lines = [
+        f"Current time: {stamp}.",  # relative questions ('this week') need a clock
         f"Live traffic snapshot: {payload.get('count', 0)} aircraft, "
         f"observed {payload.get('age_seconds', 0):.0f}s ago, OpenSky {payload.get('mode', 'anonymous')} feed "
         f"({payload.get('credits_used')}/{payload.get('credits_budget')} credits used today).",
@@ -101,6 +125,13 @@ def live_context_block(payload: dict[str, Any]) -> str:
         lines.append("  " + motion.get("disclaimer", ""))
     elif motion:
         lines.append("No unusual manoeuvre in the tracks seen so far.")
+
+    history = payload.get("history") or {}
+    if history:
+        lines.append(
+            f"Detector history (manoeuvres stored in the track_event table): "
+            f"{tracks_db.render_summary(history)}"
+        )
 
     if detections.get("disclaimer"):
         lines.append(
