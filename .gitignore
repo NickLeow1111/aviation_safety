@@ -2,3 +2,9 @@
 agent/.venv/
 __pycache__/
 *.pyc
+
+# Local environment: resource names, subscription ids, and later the OpenSky
+# client credentials. Keep .env.example tracked; these never are.
+agent/.env
+agent/.env.foundry
+agent/.env.local
