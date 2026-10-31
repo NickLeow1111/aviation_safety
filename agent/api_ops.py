@@ -80,7 +80,7 @@ def detection_counts(conn: Any, hours: int) -> dict[str, Any]:
             """
             SELECT event_type, severity, COUNT(*)
               FROM safety_event
-             WHERE event_time > now() - %s
+             WHERE event_time > now() - %s AND invalidated_at IS NULL
              GROUP BY 1, 2
              ORDER BY 3 DESC
             """,
@@ -97,10 +97,14 @@ def detection_counts(conn: Any, hours: int) -> dict[str, Any]:
         by_type_severity.setdefault(event_type, {})[severity] = count
 
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM safety_event WHERE event_time > now() - %s", (window,))
+        cur.execute(
+            "SELECT COUNT(*) FROM safety_event WHERE event_time > now() - %s AND invalidated_at IS NULL",
+            (window,),
+        )
         total = cur.fetchone()[0]
         cur.execute(
-            "SELECT COUNT(*) FROM safety_event WHERE event_time > now() - make_interval(hours => 1)"
+            "SELECT COUNT(*) FROM safety_event "
+            "WHERE event_time > now() - make_interval(hours => 1) AND invalidated_at IS NULL"
         )
         last_hour = cur.fetchone()[0]
 
@@ -124,6 +128,7 @@ def hourly_series(conn: Any, hours: int) -> list[dict[str, Any]]:
             SELECT date_trunc('hour', event_time) AS bucket, COUNT(*)
               FROM safety_event
              WHERE event_time > now() - make_interval(hours => %s)
+               AND invalidated_at IS NULL
              GROUP BY 1
              ORDER BY 1
             """,
@@ -148,6 +153,7 @@ def places(conn: Any, hours: int, limit: int = TOP_N) -> list[dict[str, Any]]:
             SELECT place_icao, MAX(place_name), COUNT(*) AS count
               FROM safety_event
              WHERE event_time > now() - make_interval(hours => %s)
+               AND invalidated_at IS NULL
              GROUP BY place_icao
              ORDER BY count DESC
              LIMIT %s
@@ -203,8 +209,9 @@ def recent(conn: Any, limit: int = RECENT_LIMIT) -> list[dict[str, Any]]:
         cur.execute(
             """
             SELECT id, event_time, event_type, severity, place_icao, place_name,
-                   callsigns, metrics, source
+                   callsigns, metrics, source, detector
               FROM safety_event
+             WHERE invalidated_at IS NULL
              ORDER BY event_time DESC, id DESC
              LIMIT %s
             """,
@@ -213,7 +220,18 @@ def recent(conn: Any, limit: int = RECENT_LIMIT) -> list[dict[str, Any]]:
         rows = cur.fetchall()
 
     out = []
-    for event_id, event_time, event_type, severity, place_icao, place_name, callsigns, metrics, source in rows:
+    for (
+        event_id,
+        event_time,
+        event_type,
+        severity,
+        place_icao,
+        place_name,
+        callsigns,
+        metrics,
+        source,
+        detector,
+    ) in rows:
         metrics = metrics or {}
         out.append(
             {
@@ -225,9 +243,52 @@ def recent(conn: Any, limit: int = RECENT_LIMIT) -> list[dict[str, Any]]:
                 "place_name": place_name,
                 "callsigns": list(callsigns or []),
                 "source": source,
-                "detector": metrics.get("detector") or metrics.get("engine"),
+                "detector": detector,
                 "separation_nm": metrics.get("separation_nm"),
                 "vertical_ft": metrics.get("vertical_ft"),
+            }
+        )
+    return out
+
+
+def detector_yield(conn: Any, hours: int) -> list[dict[str, Any]]:
+    """What each detector produced, and how much of it survived re-judgement.
+
+    A snapshot sees one moment and cannot tell a rollout from a fly-by; a trajectory
+    engine sees the shape of the whole encounter. Keeping their counts apart is the only
+    way to know whether the second is worth its runtime — so the figures here are yields
+    and validation rates, not a single blended number.
+
+    Invalidated rows are counted but not deleted, which is what makes the rate computable
+    at all.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COALESCE(detector, 'unknown') AS detector,
+                   COUNT(*) AS produced,
+                   COUNT(*) FILTER (WHERE invalidated_at IS NOT NULL) AS invalidated,
+                   MAX(event_time) AS last_seen
+              FROM safety_event
+             WHERE event_time > now() - make_interval(hours => %s)
+             GROUP BY 1
+             ORDER BY 2 DESC, 1
+            """,
+            (hours,),
+        )
+        rows = cur.fetchall()
+
+    out = []
+    for detector, produced, invalidated, last_seen in rows:
+        kept = produced - invalidated
+        out.append(
+            {
+                "detector": detector,
+                "produced": produced,
+                "invalidated": invalidated,
+                "kept": kept,
+                "validation_rate": round(kept / produced, 3) if produced else None,
+                "last_seen": _iso(last_seen) if last_seen else None,
             }
         )
     return out
@@ -259,6 +320,7 @@ def overview(conn: Any, hours: int = DEFAULT_HOURS) -> dict[str, Any]:
         "places": places(conn, hours),
         "types": aircraft_types(conn),
         "recent": recent(conn),
+        "detectors": detector_yield(conn, hours),
         "track_hours": overlap_hours(conn, hours),
     }
     board["took_ms"] = int((time.time() - started) * 1000)

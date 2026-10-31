@@ -1,0 +1,20 @@
+[Unit]
+Description=Safety Intelligence — API and dashboard
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/root/aviation_safety/agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/root/aviation_safety/agent
+ExecStart=/root/aviation_safety/agent/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 7700 --workers 1
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=safetyintel-api
+
+[Install]
+WantedBy=multi-user.target

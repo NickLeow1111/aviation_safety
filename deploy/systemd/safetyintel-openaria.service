@@ -1,0 +1,21 @@
+[Unit]
+Description=MilesHound — OpenARIA trajectory analysis over stored tracks
+Documentation=file:/root/aviation_safety/README.md
+After=network-online.target postgresql.service safetyintel-poller.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/aviation_safety/agent
+Environment=PYTHONUNBUFFERED=1
+# A six-hour window on a four-hour timer: two hours of overlap, so an encounter that
+# straddles a boundary is seen by both runs rather than by neither. The engine's uniqueId
+# keys the row, so the overlap repeats are no-ops, not duplicates.
+ExecStart=/root/aviation_safety/agent/.venv/bin/python -m openaria --hours 4 --overlap-hours 2 --workdir /var/tmp/openaria-run
+Nice=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=safetyintel-openaria
+
+[Install]
+WantedBy=multi-user.target

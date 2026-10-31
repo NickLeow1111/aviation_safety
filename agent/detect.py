@@ -20,6 +20,8 @@ import re
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Iterable, Sequence
 
+import phase
+
 EARTH_RADIUS_NM = 3440.065
 
 DEFAULTS = {
@@ -160,22 +162,15 @@ def _usable(aircraft: dict[str, Any]) -> bool:
 
 
 def is_airborne(aircraft: dict[str, Any], floor_ft: float = GROUND_FLOOR_FT) -> bool:
-    """Whether a position is airborne traffic, as the separation minima mean it.
+    """Whether a position is traffic, as the separation minima mean it.
 
-    Either signal is enough to call it ground: the transponder's own flag, or a
-    reported height at or below the floor. Unknown height stays in play — an aircraft
-    we cannot place vertically is still worth comparing horizontally, and the vertical
-    test in `evaluate` will treat it as unknown rather than safe.
+    Delegates to `phase.classify`, which separates ground from transition: a flat floor
+    kept rollouts out of the picture but would also have discarded a genuine encounter
+    low on climb-out. Unknown height stays in play — an aircraft we cannot place
+    vertically is still worth comparing horizontally, and the vertical test below treats
+    it as unknown rather than safe.
     """
-    if aircraft.get("on_ground"):
-        return False
-    altitude = aircraft.get("altitude_ft")
-    if altitude is None:
-        return True
-    try:
-        return float(altitude) > floor_ft
-    except (TypeError, ValueError):
-        return True
+    return phase.is_airborne(aircraft)
 
 
 def evaluate(aircraft: Iterable[dict[str, Any]], rules: Rules) -> dict[str, Any]:
@@ -223,6 +218,14 @@ def evaluate(aircraft: Iterable[dict[str, Any]], rules: Rules) -> dict[str, Any]
                     "vertical_ft": vertical,
                     "lat": round((first["lat"] + second["lat"]) / 2, 5),
                     "lon": round((first["lon"] + second["lon"]) / 2, 5),
+                    # Which phase each aircraft was in. Transition pairs are the ones a
+                    # flat altitude floor would have discarded; they are reported, not
+                    # hidden, so a low-level encounter stays visible as itself.
+                    "phase_a": phase.classify(first),
+                    "phase_b": phase.classify(second),
+                    "low_altitude": any(
+                        phase.classify(item) == phase.TRANSITION for item in (first, second)
+                    ),
                 }
             )
     conflicts.sort(key=lambda item: item["separation_nm"])

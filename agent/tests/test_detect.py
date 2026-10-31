@@ -98,12 +98,20 @@ def test_an_aircraft_rolling_out_is_ground_traffic_even_if_the_flag_says_airborn
     assert len(detect.evaluate(pair, detect.Rules(ignore_ground=False))["conflicts"]) == 1
 
 
-def test_the_ground_floor_is_a_hundred_feet():
-    just_under = aircraft("LOW1", 1.350, 103.990, 90)
-    just_over = aircraft("LOW2", 1.350, 103.990, 120)
-    assert detect.is_airborne(just_under) is False
-    assert detect.is_airborne(just_over) is True
-    assert detect.GROUND_FLOOR_FT == 100.0
+def test_the_flat_floor_is_gone_and_the_phase_classifier_decides():
+    """The 100 ft floor was the first safeguard; it is now one input to a phase call.
+
+    A level aircraft a hundred feet up is a rollout, whatever its flag says. The same
+    aircraft descending hard is on approach and stays in the comparison — which is the
+    case the flat floor would have discarded.
+    """
+    rollout = aircraft("LOW1", 1.350, 103.990, 120)
+    rollout["vertical_rate_fpm"] = 0
+    on_approach = aircraft("LOW2", 1.350, 103.990, 120)
+    on_approach["vertical_rate_fpm"] = -700
+
+    assert detect.is_airborne(rollout) is False
+    assert detect.is_airborne(on_approach) is True
 
 
 def test_unknown_altitude_still_reports_proximity():

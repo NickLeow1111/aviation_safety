@@ -77,8 +77,10 @@ def test_callsign_accepts_a_bare_string_or_a_list():
 # --------------------------------------------------------------------------- #
 
 def test_empty_filters_select_everything_newest_first():
+    # Every unfiltered view still means "the active picture": invalidated rows are kept
+    # for the audit trail and are opted into explicitly, never shown by accident.
     sql, params = store.build_query()
-    assert "WHERE" not in sql
+    assert "WHERE invalidated_at IS NULL" in sql
     assert "ORDER BY event_time DESC" in sql
     assert params == [500]
 
@@ -218,3 +220,54 @@ def test_severity_mapping_keeps_level_1_as_most_serious():
     severe = [e for e in events if e["severity"] == "critical"]
     assert severe, "expected at least one Level 1 finding"
     assert all(e["raw"].get("Finding_Level") == "Level 1" for e in severe)
+
+
+# --------------------------------------------------------------------------- #
+# which witness produced a row
+# --------------------------------------------------------------------------- #
+
+def _derived_event(**overrides):
+    import datetime as dt
+
+    base = {
+        "event_time": dt.datetime.now(dt.timezone.utc),
+        "event_type": "loss_of_separation",
+        "severity": "high",
+        "lat": 1.3,
+        "lon": 103.9,
+        "source": "derived",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_the_detector_is_recorded_once_at_insert():
+    """Comparing yields is worthless if each reader guesses the split differently."""
+    snapshot = store.normalise_event(_derived_event(metrics={"detector": "snapshot_separation"}))
+    engine = store.normalise_event(_derived_event(metrics={"engine": "openaria-0.5.0"}))
+    motion = store.normalise_event(_derived_event(metrics={"detector": "track_motion"}))
+
+    assert snapshot["detector"] == "snapshot_separation"
+    assert engine["detector"] == "openaria"
+    assert motion["detector"] == "snapshot_motion"
+
+
+def test_an_unmarked_derived_event_is_unknown_rather_than_guessed():
+    assert store.normalise_event(_derived_event())["detector"] == "unknown"
+
+
+def test_reported_events_are_not_called_detector_output():
+    event = store.normalise_event(_derived_event(source="report"))
+    assert event["detector"] == "reported"
+
+
+def test_invalidated_rows_are_out_of_the_active_view_by_default():
+    sql, params = store.build_query()
+    assert "invalidated_at IS NULL" in sql
+    assert "invalidated_at IS NULL" not in store.build_query(include_invalidated=True)[0]
+
+
+def test_the_map_can_be_filtered_to_one_detector():
+    sql, params = store.build_query(detector="openaria")
+    assert "detector = %s" in sql
+    assert "openaria" in params

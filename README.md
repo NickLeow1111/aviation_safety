@@ -422,3 +422,59 @@ uvicorn app:app --reload --port 7700     # needs Foundry env vars, see agent/REA
 
 For UI-only preview without Foundry or Synapse, `agent/scripts/run_demo_mode.sh`
 sets `SAFETY_INTEL_DEMO_MODE=1` and serves canned SSE responses.
+
+## Running continuously (systemd)
+
+Three units run this box; all of them survive a reboot and a closed terminal.
+
+```bash
+systemctl status safetyintel-poller     # collection: OpenSky + adsb.lol, ~20 s cadence
+systemctl status safetyintel-api        # dashboard on 127.0.0.1:7700
+systemctl list-timers safetyintel-openaria.timer   # trajectory analysis, every 4 h
+```
+
+* **Poller** — `Type=notify` with `WatchdogSec=600`, `Restart=always`. The poller pokes
+  the watchdog after every completed poll, so a run that wedges mid-poll is restarted
+  instead of quietly returning nothing while the map keeps serving stale positions.
+  Journal: `journalctl -u safetyintel-poller -f`.
+* **API** — `Restart=always`; the dashboard is served from `agent/static`.
+* **OpenARIA** — a six-hour analysis window on a four-hour timer, i.e. two hours of
+  overlap. An encounter that straddles a boundary is seen by both runs rather than by
+  neither, and the engine's `uniqueId` keys the row, so the repeats are no-ops, not
+  duplicates. The jar is not in git: `/root/aviation_safety/vendor/open-aria-uber.jar`.
+
+## Detector separation and the audit trail
+
+Every event records **which witness produced it** in `safety_event.detector` —
+`snapshot_separation`, `snapshot_motion`, `openaria`, `reported` or `unknown`. They are
+never blended: a single-moment detector and a trajectory engine are not the same witness,
+and the comparison of their yields is the reason to keep them apart. The ops board shows
+both, with a validation rate for each.
+
+A detection that turns out to be wrong is **marked, never deleted**:
+
+```bash
+cd agent && .venv/bin/python -m reclassify          # dry run: what would change
+cd agent && .venv/bin/python -m reclassify --apply  # mark them
+```
+
+Invalidations set `invalidated_at`, `invalidation_reason` and `invalidated_by`, and append
+the evidence (the phases each aircraft was in, at the event time) to `metrics.revalidation`.
+The row keeps its original payload, provenance and metrics, so a later reader can check the
+re-judgement instead of having to trust it. Active views filter on `invalidated_at IS NULL`;
+`store.build_query(include_invalidated=True)` is the explicit opt-out.
+
+## Flight phase
+
+`agent/phase.py` classifies a position as **ground**, **transition** or **airborne**, and
+only ground is excluded from separation checks:
+
+| phase | what it is | in separation checks |
+|---|---|---|
+| ground | at/below the surface band, taxiing, or rolling out level at runway height | no |
+| transition | low and climbing/descending hard, or low and level (approach, climb-out, circuit) | yes, labelled `low_altitude` |
+| airborne | established traffic | yes |
+
+The single 100 ft floor was the first safeguard and the wrong instrument: it kept rollouts
+out of the picture (right) while standing ready to discard a genuine encounter low on
+climb-out (wrong). Transitions are now reported and tagged rather than silently dropped.

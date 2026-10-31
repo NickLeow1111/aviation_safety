@@ -51,8 +51,13 @@ EVENT_TYPES = (
 _COLUMNS = (
     "id, event_time, event_type, severity, lat, lon, place_icao, place_name, "
     "altitude_ft, callsigns, icao24, registration, metrics, source, provenance, "
-    "external_ref, ingested_at"
+    "external_ref, ingested_at, detector, invalidated_at, invalidation_reason"
 )
+
+# A snapshot detector and a trajectory engine are not the same witness, and comparing
+# their yields is the point of keeping them apart. The column is derived once, at insert,
+# so a stored row never has to be re-interpreted by whoever reads it later.
+DETECTORS = ("snapshot_separation", "snapshot_motion", "openaria", "reported", "unknown")
 
 
 # --------------------------------------------------------------------------- #
@@ -145,6 +150,9 @@ def normalise_event(event: dict[str, Any]) -> dict[str, Any]:
     if source not in SOURCES:
         raise ValueError(f"source must be one of {SOURCES} (got {source!r})")
 
+    metrics = event.get("metrics") or {}
+    detector = _detector_for(event, metrics)
+
     def _list(value: Any) -> list[str]:
         if not value:
             return []
@@ -164,13 +172,42 @@ def normalise_event(event: dict[str, Any]) -> dict[str, Any]:
         "callsigns": _list(event.get("callsigns")),
         "icao24": [c.lower() for c in _list(event.get("icao24"))],
         "registration": event.get("registration") or None,
-        "metrics": event.get("metrics") or {},
+        "metrics": metrics,
         "source": source,
+        "detector": detector,
         "provenance": str(event.get("provenance") or "unspecified"),
         "external_ref": event.get("external_ref") or None,
         "raw": event.get("raw") or {},
     }
 
+
+
+
+def _detector_for(event: dict[str, Any], metrics: dict[str, Any]) -> str:
+    """Which witness produced this row.
+
+    Recorded once, at insert, rather than re-derived by every reader: the whole value of
+    the split is comparing what one detector catches against another, and that comparison
+    is worthless if each consumer guesses differently.
+    """
+    explicit = str(event.get("detector") or "").strip()
+    if explicit:
+        return explicit if explicit in DETECTORS else "unknown"
+
+    marker = str(metrics.get("detector") or "").strip()
+    if marker == "snapshot_separation":
+        return "snapshot_separation"
+    if marker == "track_motion":
+        return "snapshot_motion"
+
+    engine = str(metrics.get("engine") or "").strip().lower()
+    if engine.startswith("openaria"):
+        return "openaria"
+
+    source = str(event.get("source") or "").strip()
+    if source in {"report", "upload"}:
+        return "reported"
+    return "unknown"
 
 # --------------------------------------------------------------------------- #
 # query building (pure — this is what the tests exercise)
@@ -203,6 +240,8 @@ def build_query(
     place_icao: str | None = None,
     source: str | None = None,
     bbox: Sequence[float] | None = None,
+    detector: str | None = None,
+    include_invalidated: bool = False,
     limit: int = 500,
     order: str = "desc",
 ) -> tuple[str, list[Any]]:
@@ -243,6 +282,17 @@ def build_query(
             raise ValueError(f"source must be one of {SOURCES}")
         clauses.append("source = %s")
         params.append(source)
+
+    if detector:
+        if detector not in DETECTORS:
+            raise ValueError(f"detector must be one of {DETECTORS}")
+        clauses.append("detector = %s")
+        params.append(detector)
+
+    # Invalidated rows stay in the table for the audit trail and are never deleted, so
+    # every active view has to say so explicitly. Default is the active picture.
+    if not include_invalidated:
+        clauses.append("invalidated_at IS NULL")
 
     if bbox is not None:
         min_lat, min_lon, max_lat, max_lon = _validate_bbox(bbox)
@@ -345,11 +395,11 @@ def insert_events(conn: Any, events: Iterable[dict[str, Any]]) -> int:
         INSERT INTO safety_event
             (event_time, event_type, severity, lat, lon, place_icao, place_name,
              altitude_ft, callsigns, icao24, registration, metrics, source,
-             provenance, external_ref, raw)
+             provenance, external_ref, raw, detector)
         VALUES (%(event_time)s, %(event_type)s, %(severity)s, %(lat)s, %(lon)s,
                 %(place_icao)s, %(place_name)s, %(altitude_ft)s, %(callsigns)s,
                 %(icao24)s, %(registration)s, %(metrics)s, %(source)s,
-                %(provenance)s, %(external_ref)s, %(raw)s)
+                %(provenance)s, %(external_ref)s, %(raw)s, %(detector)s)
         ON CONFLICT (source, external_ref) WHERE external_ref IS NOT NULL DO NOTHING
     """
     import json  # noqa: PLC0415

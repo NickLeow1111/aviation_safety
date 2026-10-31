@@ -28,6 +28,8 @@ import argparse
 import asyncio
 import logging
 import math
+import os
+import socket
 import signal
 import time
 from datetime import datetime, time as dtime, timedelta, timezone
@@ -236,6 +238,33 @@ async def poll_once(
 # the loop
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# systemd integration
+# --------------------------------------------------------------------------- #
+
+def notify(state: str) -> bool:
+    """Send a readiness or watchdog line to systemd, if it is listening.
+
+    The service runs with WatchdogSec set, so a poller that wedges mid-poll — a hung HTTP
+    session, a blocked database call — is restarted by systemd instead of quietly returning
+    nothing for hours. Silence is the failure mode that hurts: the map keeps serving the
+    last positions and nobody learns the feed stopped.
+
+    No systemd library is needed; the protocol is a datagram to $NOTIFY_SOCKET.
+    """
+    path = os.environ.get("NOTIFY_SOCKET")
+    if not path:
+        return False
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            address = "\0" + path[1:] if path.startswith("@") else path
+            sock.connect(address)
+            sock.sendall(state.encode("utf-8"))
+        return True
+    except OSError:
+        return False
+
+
 async def run_forever(
     *,
     bbox: Sequence[float],
@@ -258,9 +287,13 @@ async def run_forever(
         except ValueError:  # pragma: no cover — not on the main thread
             pass
 
+    notify("READY=1")
+
     while not _stopping["stop"]:
         with store.connect() as conn:
             result = await poll_once(conn, bbox=bbox, use_community=use_community, state=state)
+        # One poke per completed poll: the watchdog measures liveness, not diligence.
+        notify("WATCHDOG=1")
         log.info(
             "poll: opensky=%s community=%s merged=%s fresh=%s stored=%s credits_left=%s%s",
             result.get("opensky_aircraft"),

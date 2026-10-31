@@ -1,0 +1,25 @@
+[Unit]
+Description=Safety Intelligence — OpenSky/adsb.lol traffic poller
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+WorkingDirectory=/root/aviation_safety/agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/root/aviation_safety/agent/.venv/bin/python -m poller
+# A poller that hangs mid-poll is worse than one that dies: the map keeps serving stale
+# positions and nobody learns the feed stopped. It pokes the watchdog after every completed
+# poll, so silence for this long means something is wedged.
+WatchdogSec=600
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=safetyintel-poller
+
+[Install]
+WantedBy=multi-user.target

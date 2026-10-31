@@ -443,6 +443,15 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Run MITRE OpenARIA over stored tracks and store what it finds.")
     parser.add_argument("--hours", type=float, default=24.0, help="how far back to analyse (default 24)")
+    parser.add_argument(
+        "--overlap-hours",
+        type=float,
+        default=2.0,
+        help=(
+            "extend the window back by this much so an encounter straddling the previous "
+            "run's boundary is seen twice rather than missed (default 2)"
+        ),
+    )
     parser.add_argument("--since", help="ISO timestamp; overrides --hours")
     parser.add_argument("--until", help="ISO timestamp; defaults to now")
     parser.add_argument("--workdir", default="/tmp/openaria-run", help="scratch directory for CSV and output")
@@ -455,7 +464,10 @@ def main(argv: list[str] | None = None) -> int:
 
     now = datetime.now(timezone.utc)
     until = datetime.fromisoformat(args.until) if args.until else now
-    since = datetime.fromisoformat(args.since) if args.since else until - timedelta(hours=args.hours)
+    # Overlap is cheaper than a missed encounter: the engine sees the same boundary twice,
+    # and the unique index on (source, external_ref) turns the repeat into a no-op.
+    hours = args.hours + max(0.0, args.overlap_hours)
+    since = datetime.fromisoformat(args.since) if args.since else until - timedelta(hours=hours)
 
     workdir = Path(args.workdir)
     for stale in ("detectedEvents", "eventMaps"):

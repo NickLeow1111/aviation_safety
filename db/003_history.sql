@@ -67,3 +67,21 @@ CREATE INDEX IF NOT EXISTS track_event_kind_time
 
 CREATE INDEX IF NOT EXISTS track_event_aircraft_time
     ON track_event (icao24, observed_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- Audit columns on the event table.
+--
+-- A detection that turns out to be wrong is never deleted: it is marked. The row keeps
+-- its original payload, its provenance and its metrics, so a later reader can check the
+-- re-judgement instead of having to trust it. Active views filter on invalidated_at.
+-- ---------------------------------------------------------------------------
+ALTER TABLE safety_event ADD COLUMN IF NOT EXISTS detector TEXT;
+ALTER TABLE safety_event ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
+ALTER TABLE safety_event ADD COLUMN IF NOT EXISTS invalidation_reason TEXT;
+ALTER TABLE safety_event ADD COLUMN IF NOT EXISTS invalidated_by TEXT;
+
+CREATE INDEX IF NOT EXISTS safety_event_detector_time
+    ON safety_event (detector, event_time DESC);
+
+CREATE INDEX IF NOT EXISTS safety_event_active_time
+    ON safety_event (event_time DESC) WHERE invalidated_at IS NULL;

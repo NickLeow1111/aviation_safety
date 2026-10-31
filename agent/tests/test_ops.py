@@ -119,10 +119,11 @@ def test_recent_events_survive_a_missing_metrics_object():
         ["AXM718", "MMA233"],
         None,
         "derived",
+        "snapshot_separation",
     )
     events = api_ops.recent(FakeConn(many=[[row]]))
     assert events[0]["separation_nm"] is None
-    assert events[0]["detector"] is None
+    assert events[0]["detector"] == "snapshot_separation"
     assert events[0]["callsigns"] == ["AXM718", "MMA233"]
 
 
@@ -162,6 +163,37 @@ class _Context:
 
     def __exit__(self, *exc):
         return False
+
+
+def test_the_board_counts_only_active_detections():
+    """Invalidated rows stay in the table; the board is the active picture."""
+    conn = FakeConn(one=[(65,), (4,)])
+    api_ops.detection_counts(conn, hours=24)
+    statements = [sql for sql, _ in conn.statements]
+    assert any("invalidated_at IS NULL" in sql for sql in statements)
+
+
+def test_detector_yields_are_reported_with_their_validation_rate():
+    """A detector that produces a lot and survives rarely is worth less than its count."""
+    from datetime import datetime, timezone
+
+    rows = [
+        ("snapshot_separation", 41, 10, datetime.now(timezone.utc)),
+        ("openaria", 4, 0, datetime.now(timezone.utc)),
+    ]
+    yields = api_ops.detector_yield(FakeConn(many=[rows]), hours=24)
+
+    assert yields[0]["detector"] == "snapshot_separation"
+    assert yields[0]["produced"] == 41
+    assert yields[0]["kept"] == 31
+    assert yields[0]["validation_rate"] == 0.756
+    assert yields[1]["validation_rate"] == 1.0
+
+
+def test_a_detector_that_produced_nothing_reports_no_rate_rather_than_zero():
+    yields = api_ops.detector_yield(FakeConn(many=[[("openaria", 0, 0, None)]]), hours=24)
+    assert yields[0]["validation_rate"] is None
+    assert yields[0]["last_seen"] is None
 
 
 def test_the_window_is_bounded_so_the_board_cannot_be_asked_for_forever():

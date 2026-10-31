@@ -22,6 +22,15 @@ type Traffic = {
 };
 
 type TypeCount = { type: string; aircraft: number; airborne: number };
+
+type DetectorStat = {
+  detector: string;
+  produced: number;
+  invalidated: number;
+  kept: number;
+  validation_rate: number | null;
+  last_seen: string | null;
+};
 type PlaceCount = { icao: string | null; name: string | null; count: number };
 type SeriesPoint = { at: string; count: number };
 
@@ -54,6 +63,7 @@ type Board = {
   series: SeriesPoint[];
   places: PlaceCount[];
   types: TypeCount[];
+  detectors: DetectorStat[];
   recent: RecentEvent[];
 };
 
@@ -123,7 +133,7 @@ export function OpsBoard({ onSelectEvent }: { onSelectEvent?: (id: number) => vo
     );
   }
 
-  const { traffic, detections, places, types, recent, series } = board;
+  const { traffic, detections, places, types, recent, series, detectors } = board;
   const peak = Math.max(1, ...series.map((point) => point.count));
   const newest = recent[0];
   const stale = traffic.last_fix_age_seconds !== null && traffic.last_fix_age_seconds > 300;
@@ -273,6 +283,45 @@ export function OpsBoard({ onSelectEvent }: { onSelectEvent?: (id: number) => vo
                 </ul>
               )}
             </div>
+          </div>
+
+          <div className="ops-section">
+            <div className="ops-section-head">
+              <span>Detectors</span>
+              <span className="ops-muted">yield · validation</span>
+            </div>
+            {detectors.length === 0 ? (
+              <p className="ops-empty">No detector has produced anything in this window.</p>
+            ) : (
+              <ul className="ops-breakdown">
+                {detectors.map((entry) => (
+                  <li key={entry.detector}>
+                    <span className="ops-break-name">
+                      {niceType(entry.detector)}
+                      <span className="ops-break-sub">
+                        {entry.kept} kept of {entry.produced}
+                        {entry.invalidated > 0 ? ` · ${entry.invalidated} invalidated` : ""}
+                      </span>
+                    </span>
+                    <span className="ops-break-count">
+                      {entry.validation_rate === null
+                        ? "—"
+                        : `${Math.round(entry.validation_rate * 100)}%`}
+                    </span>
+                    <span className="ops-break-bar">
+                      <span
+                        style={{
+                          width: `${Math.max(
+                            3,
+                            (entry.kept / Math.max(1, detectors[0].produced)) * 100,
+                          )}%`,
+                        }}
+                      />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <footer className="ops-foot">
