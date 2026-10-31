@@ -19,7 +19,11 @@ from typing import Any
 import phase
 import store
 
-INVALIDATED_BY = "reclassify:phase-v1"
+# The invalidation records which classifier made the call. A later rule change is a new
+# version, so every mark on a row says who made it and from which rules.
+INVALIDATED_BY = f"reclassify:{phase.CLASSIFIER_VERSION}"
+STATE_NAME = "loss_of_separation"
+NIGHTLY_SECONDS = 20 * 3600
 # How far either side of an event to look for the positions it was built from. The
 # producer compares a single snapshot, so this only has to cover feed latency.
 TRACK_WINDOW_SECONDS = 30
@@ -102,7 +106,91 @@ def _judge(event: dict[str, Any], tracks: dict[str, list[dict[str, Any]]], when:
     return {"verdict": "valid", "phases": observed, "reason": ""}
 
 
-def reassess(conn: Any, apply: bool = False) -> dict[str, Any]:
+# --------------------------------------------------------------------------- #
+# the run record
+# --------------------------------------------------------------------------- #
+
+def ensure_state(conn: Any) -> None:
+    """The pass keeps its own history: which version last judged, and when.
+
+    Additive and idempotent, so it is safe on a store that predates this pass.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS classifier_state (
+                name          TEXT PRIMARY KEY,
+                version       TEXT NOT NULL,
+                last_run_at   TIMESTAMPTZ NOT NULL,
+                last_apply_at TIMESTAMPTZ,
+                runs          INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS classifier_run (
+                id         BIGSERIAL PRIMARY KEY,
+                name       TEXT NOT NULL,
+                version    TEXT NOT NULL,
+                trigger    TEXT NOT NULL,
+                checked    INTEGER NOT NULL,
+                invalid    INTEGER NOT NULL,
+                applied    INTEGER NOT NULL,
+                ran_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+
+
+def read_state(conn: Any) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT version, last_run_at, last_apply_at, runs FROM classifier_state WHERE name = %s",
+            (STATE_NAME,),
+        )
+        row = cur.fetchone()
+    if not row:
+        return None
+    version, last_run, last_apply, runs = row
+    return {"version": version, "last_run_at": last_run, "last_apply_at": last_apply, "runs": runs}
+
+
+def write_state(conn: Any, *, ran_at: datetime, applied: bool) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO classifier_state (name, version, last_run_at, last_apply_at, runs)
+            VALUES (%s, %s, %s, %s, 1)
+            ON CONFLICT (name) DO UPDATE
+               SET version = EXCLUDED.version,
+                   last_run_at = EXCLUDED.last_run_at,
+                   last_apply_at = COALESCE(EXCLUDED.last_apply_at, classifier_state.last_apply_at),
+                   runs = classifier_state.runs + 1
+            """,
+            (STATE_NAME, phase.CLASSIFIER_VERSION, ran_at, ran_at if applied else None),
+        )
+
+
+def record_run(conn: Any, *, trigger: str, result: dict[str, Any]) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO classifier_run (name, version, trigger, checked, invalid, applied)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                STATE_NAME,
+                phase.CLASSIFIER_VERSION,
+                trigger,
+                result["checked"],
+                len(result["invalid"]),
+                result["invalidated"],
+            ),
+        )
+
+
+def reassess(conn: Any, apply: bool = False, trigger: str = "manual") -> dict[str, Any]:
     """Run the pass. `apply=False` reports what would change and writes nothing."""
     with conn.cursor() as cur:
         cur.execute(
@@ -147,6 +235,13 @@ def reassess(conn: Any, apply: bool = False) -> dict[str, Any]:
     written = 0
     if apply and invalid:
         written = _invalidate(conn, invalid)
+
+    if apply:
+        record_run(
+            conn,
+            trigger=trigger,
+            result={"checked": checked, "invalid": invalid, "invalidated": written},
+        )
 
     return {
         "checked": checked,
@@ -193,14 +288,74 @@ def _invalidate(conn: Any, findings: list[dict[str, Any]]) -> int:
     return written
 
 
+def decide(state: dict[str, Any] | None, now: datetime) -> str | None:
+    """Whether an automatic pass should run, and why.
+
+    Two triggers, and no others:
+
+    * the classifier version changed — the stored judgements were made by other rules;
+    * a day has passed — positions arrive late (a feed backfills a gap, an upload lands),
+      so an event that could not be re-derived yesterday can be re-derivable today.
+
+    Returns the trigger name, or None to leave the store alone.
+    """
+    if state is None:
+        return "first_run"
+    if state["version"] != phase.CLASSIFIER_VERSION:
+        return "classifier_changed"
+    last = state["last_run_at"]
+    if last is None:
+        return "first_run"
+    if (now - last).total_seconds() >= NIGHTLY_SECONDS:
+        return "nightly_catch_up"
+    return None
+
+
+def auto(conn: Any, now: datetime | None = None) -> dict[str, Any]:
+    """The scheduled entry point: judge only when there is something to judge."""
+    moment = now or datetime.now(timezone.utc)
+    ensure_state(conn)
+    state = read_state(conn)
+    trigger = decide(state, moment)
+
+    if trigger is None:
+        return {"skipped": True, "reason": "rules unchanged and the last pass is under a day old", "state": state}
+
+    result = reassess(conn, apply=True, trigger=trigger)
+    write_state(conn, ran_at=moment, applied=True)
+    result.update({"skipped": False, "trigger": trigger})
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Re-judge stored loss-of-separation events.")
     parser.add_argument("--apply", action="store_true", help="write the invalidations (default: dry run)")
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="scheduled mode: apply only when the classifier version changed or a day has passed",
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
 
     with store.connect() as conn:
+        if args.auto:
+            result = auto(conn)
+            if result.get("skipped"):
+                print(f"reclassify: nothing to do — {result['reason']}")
+                return 0
+            trigger = result["trigger"]
+            print(
+                f"reclassify[{trigger}]: checked {result['checked']}, invalidated "
+                f"{result['invalidated']} of {len(result['invalid'])} findings "
+                f"(classifier {phase.CLASSIFIER_VERSION})"
+            )
+            return 0
+
         result = reassess(conn, apply=args.apply)
+        if args.apply:
+            ensure_state(conn)
+            write_state(conn, ran_at=datetime.now(timezone.utc), applied=True)
 
     if args.json:
         import json  # noqa: PLC0415

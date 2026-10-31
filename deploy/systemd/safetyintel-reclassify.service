@@ -1,0 +1,17 @@
+[Unit]
+Description=Safety Intelligence — re-judge stored detections against the phase classifier
+Documentation=file:/root/aviation_safety/README.md
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/aviation_safety/agent
+Environment=PYTHONUNBUFFERED=1
+# --auto decides for itself: nothing happens unless the classifier version changed or a
+# day has passed (late-arriving positions can make yesterday's unprovable event provable
+# today). It never overwrites an existing invalidation, and it never deletes a row.
+ExecStart=/root/aviation_safety/agent/.venv/bin/python -m reclassify --auto
+Nice=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=safetyintel-reclassify

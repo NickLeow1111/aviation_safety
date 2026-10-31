@@ -302,6 +302,70 @@ def event_from_openaria(
     }
 
 
+def median_interval_seconds(csv_path: Path) -> float | None:
+    """The sampling interval this analysis had to work with, in seconds.
+
+    It is the resolution limit of everything the engine reports. Two aircraft closing at
+    900 kt move nearly five nautical miles between positions here, so a closest approach
+    of a few hundred metres is arithmetic performed on a gap, not an observation.
+    """
+    import csv  # noqa: PLC0415
+    import statistics  # noqa: PLC0415
+
+    by_aircraft: dict[str, list[float]] = {}
+    try:
+        with csv_path.open(newline="") as handle:
+            for row in csv.DictReader(handle):
+                key = row.get("icao24") or row.get("adsb_icao") or row.get("callsign")
+                moment = row.get("time") or row.get("timestamp")
+                if not key or not moment:
+                    continue
+                try:
+                    by_aircraft.setdefault(key, []).append(float(moment))
+                except ValueError:
+                    continue
+    except OSError:
+        return None
+
+    gaps: list[float] = []
+    for times in by_aircraft.values():
+        times.sort()
+        gaps.extend(t2 - t1 for t1, t2 in zip(times, times[1:]) if t2 > t1)
+    return statistics.median(gaps) if gaps else None
+
+
+def annotate_resolution(events: list[dict[str, Any]], interval_s: float | None) -> None:
+    """Mark encounters finer than the data can support.
+
+    Refusing to report them would lose the geometry; reporting them unqualified would
+    invite someone to act on a number that is an artefact of the sampling. So they are
+    stored, and labelled.
+    """
+    if not interval_s:
+        return
+    for event in events:
+        metrics = event.get("metrics") or {}
+        try:
+            closure = abs(float(metrics.get("closure_kt") or 0)) / 3600.0
+            lateral = float(metrics.get("lateral_nm") or 0)
+        except (TypeError, ValueError):
+            continue
+        resolution = closure * interval_s
+        metrics["sample_interval_s"] = round(interval_s, 1)
+        metrics["resolution_nm"] = round(resolution, 2)
+        if lateral < resolution:
+            metrics["below_resolution"] = True
+            event["provenance"] = (
+                event["provenance"]
+                + f" The reported closest approach ({lateral} NM) is inside the "
+                f"{resolution:.1f} NM the data can resolve at a {closure * 3600:.0f} kt "
+                f"closure rate and a {interval_s:.0f} s sampling interval: treat the "
+                "lateral figure as unresolved rather than precise."
+            )
+        else:
+            metrics["below_resolution"] = False
+
+
 def events_from_run(directory: Path, aerodromes: Iterable[Mapping[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Translate a whole run directory, dropping payloads we could not turn into rows."""
     rows = []
@@ -500,6 +564,10 @@ def main(argv: list[str] | None = None) -> int:
             return result["returncode"]
 
         events = events_from_run(workdir / "detectedEvents", promote.load_aerodromes())
+        interval = median_interval_seconds(csv_path)
+        annotate_resolution(events, interval)
+        if not args.quiet and interval:
+            print(f"sampling interval {interval:.1f} s -> resolution limit {interval:.1f} s of closure")
         if not args.quiet:
             print(f"OpenARIA reported {len(events)} encounter(s)")
             for event in events:

@@ -137,8 +137,14 @@ def test_the_board_is_one_round_trip(monkeypatch):
     eight different ways."""
     opened = {"count": 0}
     conn = FakeConn(
-        one=[(74, 20, 94, datetime.now(timezone.utc), 6), (65,), (4,), (16.0,)],
-        many=[[], [(datetime.now(timezone.utc), 3)], [], [], []],
+        one=[
+            (74, 20, 94, datetime.now(timezone.utc), 6),  # traffic
+            (65,),  # detections in window
+            (4,),  # detections in the last hour
+            (70, 50.0, 5, 6, 18.6, 18.7, 509.3),  # coverage
+            (16.0,),  # track hours
+        ],
+        many=[[], [(datetime.now(timezone.utc), 3)], [], [], [], [], [], []],
     )
 
     def fake_connect():
@@ -194,6 +200,72 @@ def test_a_detector_that_produced_nothing_reports_no_rate_rather_than_zero():
     yields = api_ops.detector_yield(FakeConn(many=[[("openaria", 0, 0, None)]]), hours=24)
     assert yields[0]["validation_rate"] is None
     assert yields[0]["last_seen"] is None
+
+
+def test_coverage_reports_what_the_receivers_actually_saw():
+    row = (70, 50.0, 5, 6, 18.6, 18.7, 509.3)
+    board = api_ops.coverage(FakeConn(one=[row]))
+    assert board["aircraft"] == 70
+    assert board["median_interval_s"] == 18.6
+    assert board["insufficient_track"] == 5
+    assert board["with_long_gap"] == 6
+    assert board["longest_gap_s"] == 509.3
+
+
+def test_coverage_of_an_empty_sky_is_zero_not_null():
+    board = api_ops.coverage(FakeConn(one=[(0, None, None, None, None, None, None)]))
+    assert board["aircraft"] == 0
+    assert board["insufficient_track"] == 0
+    assert board["median_interval_s"] is None
+
+
+def test_the_same_encounter_seen_by_both_detectors_is_one_cluster():
+    """The detectors pick their own timestamps, so matching is on pair and proximity."""
+    from datetime import datetime, timedelta, timezone
+
+    base = datetime.now(timezone.utc) - timedelta(hours=1)
+    rows = [
+        (1, base, ["aaaaaa", "bbbbbb"], ["AXM1", "AXM2"], "snapshot_separation", "2.1", "800"),
+        (2, base + timedelta(seconds=90), ["bbbbbb", "aaaaaa"], ["AXM2", "AXM1"], "openaria", "0.4", "700"),
+    ]
+    result = api_ops.agreement(FakeConn(many=[rows]), hours=24)
+
+    assert result["clusters"] == 1
+    assert len(result["both"]) == 1
+    assert result["both"][0]["detectors"] == ["openaria", "snapshot_separation"]
+    assert result["snapshot_only"] == []
+    assert result["openaria_only"] == []
+
+
+def test_encounters_far_apart_in_time_stay_separate():
+    from datetime import datetime, timedelta, timezone
+
+    base = datetime.now(timezone.utc) - timedelta(hours=3)
+    rows = [
+        (1, base, ["aaaaaa", "bbbbbb"], ["A", "B"], "snapshot_separation", "2.1", "800"),
+        (2, base + timedelta(minutes=40), ["aaaaaa", "bbbbbb"], ["A", "B"], "openaria", "0.4", "700"),
+    ]
+    result = api_ops.agreement(FakeConn(many=[rows]), hours=24)
+    assert result["clusters"] == 2
+    assert len(result["snapshot_only"]) == 1
+    assert len(result["openaria_only"]) == 1
+
+
+def test_a_different_pair_in_the_same_minute_is_a_different_encounter():
+    from datetime import datetime, timedelta, timezone
+
+    base = datetime.now(timezone.utc) - timedelta(hours=1)
+    rows = [
+        (1, base, ["aaaaaa", "bbbbbb"], ["A", "B"], "snapshot_separation", "2.1", "800"),
+        (2, base + timedelta(seconds=20), ["cccccc", "dddddd"], ["C", "D"], "openaria", "0.4", "700"),
+    ]
+    result = api_ops.agreement(FakeConn(many=[rows]), hours=24)
+    assert result["clusters"] == 2
+
+
+def test_the_agreement_note_refuses_to_call_a_single_detection_wrong():
+    note = api_ops.agreement(FakeConn(many=[[]]), hours=24)["note"]
+    assert "not proven" in note.lower() or "worth looking at" in note.lower()
 
 
 def test_the_window_is_bounded_so_the_board_cannot_be_asked_for_forever():

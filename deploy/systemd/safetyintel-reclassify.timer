@@ -1,0 +1,11 @@
+[Unit]
+Description=Check whether stored detections need re-judging (hourly)
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=2min
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -67,3 +67,20 @@ def test_only_ground_is_excluded_from_separation():
     assert phase.is_airborne(craft(altitude_ft=0)) is False
     assert phase.is_airborne(craft(altitude_ft=125, vertical_rate_fpm=-640)) is True
     assert phase.is_airborne(craft(altitude_ft=30000)) is True
+
+
+def test_the_classifier_has_a_version_because_judgements_cite_it():
+    assert phase.CLASSIFIER_VERSION
+    assert isinstance(phase.CLASSIFIER_VERSION, str)
+
+
+def test_explain_names_the_rule_that_fired():
+    """The order of precedence is the specification; a bare label is not auditable."""
+    rollout, why = phase.explain(craft(altitude_ft=75, ground_speed_kt=151, vertical_rate_fpm=65))
+    assert rollout == phase.GROUND and "rule 4" in why
+
+    flag, why_flag = phase.explain(craft(on_ground=True, altitude_ft=0))
+    assert flag == phase.GROUND and "rule 1" in why_flag
+
+    approach, why_approach = phase.explain(craft(altitude_ft=125, vertical_rate_fpm=-640))
+    assert approach == phase.TRANSITION and "rule 6" in why_approach

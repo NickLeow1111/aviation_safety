@@ -294,6 +294,187 @@ def detector_yield(conn: Any, hours: int) -> list[dict[str, Any]]:
     return out
 
 
+def coverage(conn: Any, minutes: int = 30) -> dict[str, Any]:
+    """How much of the airspace we could actually reconstruct, and how well.
+
+    A detection count without this is a claim about the sky; with it, it is a claim about
+    what the receivers saw. The interval matters most: this store samples roughly every
+    20 seconds, so an interpolated closest approach finer than the distance travelled in
+    one interval is arithmetic, not observation.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            WITH obs AS (
+                SELECT icao24, observed_at,
+                       EXTRACT(EPOCH FROM observed_at
+                               - LAG(observed_at) OVER (PARTITION BY icao24 ORDER BY observed_at)) AS gap_s
+                  FROM aircraft_track
+                 WHERE observed_at > now() - make_interval(mins => %s)
+            ), per_aircraft AS (
+                SELECT icao24,
+                       COUNT(*) AS samples,
+                       MAX(gap_s) AS max_gap,
+                       percentile_cont(0.5) WITHIN GROUP (ORDER BY gap_s) AS median_gap
+                  FROM obs
+                 GROUP BY 1
+            )
+            SELECT COUNT(*) AS aircraft,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY samples) AS median_samples,
+                   COUNT(*) FILTER (WHERE samples < 5) AS insufficient,
+                   COUNT(*) FILTER (WHERE max_gap > 120) AS with_long_gap,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY median_gap) AS median_interval,
+                   percentile_cont(0.95) WITHIN GROUP (ORDER BY median_gap) AS p95_interval,
+                   MAX(max_gap) AS longest_gap
+              FROM per_aircraft
+            """,
+            (minutes,),
+        )
+        row = cur.fetchone()
+
+    aircraft, median_samples, insufficient, with_long_gap, median_interval, p95_interval, longest_gap = row
+    return {
+        "window_minutes": minutes,
+        "aircraft": aircraft or 0,
+        "median_samples": _num(median_samples),
+        "insufficient_track": insufficient or 0,
+        "with_long_gap": with_long_gap or 0,
+        "median_interval_s": _num(median_interval),
+        "p95_interval_s": _num(p95_interval),
+        "longest_gap_s": _num(longest_gap),
+    }
+
+
+def phase_mix(conn: Any) -> list[dict[str, Any]]:
+    """The current airspace, by phase — what the classifier makes of the traffic right now.
+
+    Counted from each aircraft's latest position, so one aircraft is one aircraft. The
+    transition count is the part a flat altitude floor used to hide.
+    """
+    import phase as phase_module  # noqa: PLC0415 — local keeps the module import-light
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT ON (icao24)
+                   icao24, altitude_ft, ground_speed_kt, vertical_rate_fpm, on_ground
+              FROM aircraft_track
+             WHERE observed_at > now() - make_interval(mins => 30)
+             ORDER BY icao24, observed_at DESC
+            """
+        )
+        rows = cur.fetchall()
+
+    counts: dict[str, int] = {}
+    for _icao, altitude, speed, vertical, on_ground in rows:
+        label = phase_module.classify(
+            {
+                "altitude_ft": altitude,
+                "ground_speed_kt": speed,
+                "vertical_rate_fpm": vertical,
+                "on_ground": bool(on_ground),
+            }
+        )
+        counts[label] = counts.get(label, 0) + 1
+
+    order = ["airborne", "transition", "ground"]
+    return [{"phase": name, "aircraft": counts.get(name, 0)} for name in order]
+
+
+def agreement(conn: Any, hours: int, cluster_seconds: int = 180) -> dict[str, Any]:
+    """Where two detectors see the same encounter, and where only one of them does.
+
+    Detection rates are not accuracy: a detector that fires on everything has a high rate
+    and no value. The only thing worth comparing is the *same encounter* seen by both —
+    and the two lists of encounters only one of them saw, which is the entire question.
+
+    Encounters are matched on the aircraft pair and time (within a few minutes), because
+    the two detectors choose their own event timestamps: the snapshot fires at the moment
+    the positions were compared, the engine at the computed closest approach.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, event_time, icao24, callsigns, detector,
+                   metrics->>'separation_nm', metrics->>'vertical_ft'
+              FROM safety_event
+             WHERE event_type = 'loss_of_separation'
+               AND invalidated_at IS NULL
+               AND event_time > now() - make_interval(hours => %s)
+             ORDER BY event_time
+            """,
+            (hours,),
+        )
+        rows = cur.fetchall()
+
+    clusters: list[dict[str, Any]] = []
+    for event_id, when, icao24, callsigns, detector, separation, vertical in rows:
+        pair = tuple(sorted(icao24 or []))
+        placed = False
+        for cluster in clusters:
+            if cluster["pair"] != pair:
+                continue
+            if abs((when - cluster["last"]).total_seconds()) > cluster_seconds:
+                continue
+            cluster["last"] = when
+            cluster["detectors"].add(detector or "unknown")
+            cluster["ids"].append(event_id)
+            placed = True
+            break
+        if not placed:
+            clusters.append(
+                {
+                    "pair": pair,
+                    "first": when,
+                    "last": when,
+                    "detectors": {detector or "unknown"},
+                    "ids": [event_id],
+                    "callsigns": list(callsigns or []),
+                    "separation_nm": separation,
+                    "vertical_ft": vertical,
+                }
+            )
+
+    both, snapshot_only, openaria_only, other = [], [], [], []
+    for cluster in clusters:
+        seen = cluster["detectors"]
+        entry = {
+            "ids": cluster["ids"],
+            "at": _iso(cluster["first"]),
+            "callsigns": cluster["callsigns"] or list(cluster["pair"]),
+            "detectors": sorted(seen),
+            "separation_nm": cluster["separation_nm"],
+            "vertical_ft": cluster["vertical_ft"],
+        }
+        has_snapshot = "snapshot_separation" in seen
+        has_openaria = "openaria" in seen
+        if has_snapshot and has_openaria:
+            both.append(entry)
+        elif has_openaria:
+            openaria_only.append(entry)
+        elif has_snapshot:
+            snapshot_only.append(entry)
+        else:
+            other.append(entry)
+
+    return {
+        "clusters": len(clusters),
+        "both": both,
+        "snapshot_only": snapshot_only,
+        "openaria_only": openaria_only,
+        "other": other,
+        "note": (
+            "Agreement counts the same encounter seen by both detectors, matched on the "
+            "aircraft pair within three minutes. A single-detector cluster is not proven "
+            "wrong — it is the case worth looking at."
+        ),
+    }
+
+
+def _num(value: Any) -> float | None:
+    return None if value is None else round(float(value), 1)
+
+
 def overlap_hours(conn: Any, hours: int) -> int:
     """Hours of stored track data behind the board — how much history it can speak for."""
     with conn.cursor() as cur:
@@ -321,6 +502,9 @@ def overview(conn: Any, hours: int = DEFAULT_HOURS) -> dict[str, Any]:
         "types": aircraft_types(conn),
         "recent": recent(conn),
         "detectors": detector_yield(conn, hours),
+        "agreement": agreement(conn, hours),
+        "coverage": coverage(conn),
+        "phases": phase_mix(conn),
         "track_hours": overlap_hours(conn, hours),
     }
     board["took_ms"] = int((time.time() - started) * 1000)

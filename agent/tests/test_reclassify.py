@@ -7,6 +7,7 @@ the pass ever starts invalidating something it cannot re-derive, these tests fai
 from datetime import datetime, timedelta, timezone
 
 import phase
+import phase
 import reclassify
 
 
@@ -167,3 +168,32 @@ def test_an_invalidation_carries_its_own_evidence():
     assert "metrics = COALESCE(metrics, '{}'::jsonb) || %s::jsonb" in sql
     assert '"revalidation"' in params[2]
     assert reclassify.INVALIDATED_BY in params[2]
+
+
+# --------------------------------------------------------------------------- #
+# when the pass decides to run by itself
+# --------------------------------------------------------------------------- #
+
+def test_the_first_run_always_runs():
+    assert reclassify.decide(None, datetime.now(timezone.utc)) == "first_run"
+
+
+def test_a_changed_classifier_triggers_a_rejudgement():
+    state = {"version": "phase-2", "last_run_at": datetime.now(timezone.utc), "last_apply_at": None, "runs": 1}
+    assert reclassify.decide(state, datetime.now(timezone.utc)) == "classifier_changed"
+
+
+def test_a_recent_run_with_unchanged_rules_does_nothing():
+    state = {"version": phase.CLASSIFIER_VERSION, "last_run_at": datetime.now(timezone.utc), "last_apply_at": None, "runs": 3}
+    assert reclassify.decide(state, datetime.now(timezone.utc)) is None
+
+
+def test_a_day_without_a_pass_runs_the_catch_up():
+    """Positions arrive late; an event that could not be re-derived yesterday can be today."""
+    stale = datetime.now(timezone.utc) - timedelta(hours=25)
+    state = {"version": phase.CLASSIFIER_VERSION, "last_run_at": stale, "last_apply_at": stale, "runs": 3}
+    assert reclassify.decide(state, datetime.now(timezone.utc)) == "nightly_catch_up"
+
+
+def test_the_invalidation_records_which_classifier_version_made_it():
+    assert reclassify.INVALIDATED_BY.endswith(phase.CLASSIFIER_VERSION)

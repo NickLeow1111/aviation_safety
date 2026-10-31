@@ -478,3 +478,40 @@ only ground is excluded from separation checks:
 The single 100 ft floor was the first safeguard and the wrong instrument: it kept rollouts
 out of the picture (right) while standing ready to discard a genuine encounter low on
 climb-out (wrong). Transitions are now reported and tagged rather than silently dropped.
+
+## Re-judgement runs itself
+
+`safetyintel-reclassify.timer` runs hourly. `reclassify --auto` does nothing unless one of
+two triggers fires:
+
+* **the classifier version changed** (`phase.CLASSIFIER_VERSION`) — the stored judgements
+  were made by other rules;
+* **a day has passed** — positions arrive late, so an event that could not be re-derived
+  yesterday can be re-derivable today.
+
+Every run appends to `classifier_run` (version, trigger, checked, invalid, applied) and
+updates `classifier_state`. Each invalidation records the version that made it
+(`invalidated_by = reclassify:phase-N`). The pass only ever updates rows where
+`invalidated_at IS NULL`, so an existing judgement is never silently overwritten, and no
+row is ever deleted.
+
+## Agreement, coverage, and what a percentage means
+
+The board's detectors panel shows each detector's **yield** and the share of it that
+survived re-judgement. That is not detector accuracy and it must not be read as such — a
+detector that fires on everything has a high rate and no value.
+
+What is worth comparing is the same encounter seen twice. `GET /api/ops/overview` matches
+loss-of-separation events on the aircraft pair within three minutes and reports three
+buckets: seen by both, snapshot only, engine only. A single-detector cluster is not proven
+wrong; it is the case worth looking at.
+
+`coverage` reports what the receivers actually delivered in the last half hour — median
+sampling interval, p95, how many aircraft carry fewer than five positions, how many had a
+gap over two minutes. This is the limit on every claim the board makes: at roughly 19 s
+sampling and a 900 kt closure, two aircraft move about five nautical miles between
+positions, so a closest approach finer than that is interpolation, not observation.
+
+`annotate_resolution()` now stamps every engine event with the sampling interval and the
+resulting resolution in nautical miles, and sets `below_resolution` when the reported
+closest approach is finer than the data supports.

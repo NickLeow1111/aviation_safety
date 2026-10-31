@@ -23,6 +23,37 @@ type Traffic = {
 
 type TypeCount = { type: string; aircraft: number; airborne: number };
 
+type Coverage = {
+  window_minutes: number;
+  aircraft: number;
+  median_samples: number | null;
+  insufficient_track: number;
+  with_long_gap: number;
+  median_interval_s: number | null;
+  p95_interval_s: number | null;
+  longest_gap_s: number | null;
+};
+
+type PhaseCount = { phase: string; aircraft: number };
+
+type AgreementCase = {
+  ids: number[];
+  at: string;
+  callsigns: string[];
+  detectors: string[];
+  separation_nm: string | null;
+  vertical_ft: string | null;
+};
+
+type Agreement = {
+  clusters: number;
+  both: AgreementCase[];
+  snapshot_only: AgreementCase[];
+  openaria_only: AgreementCase[];
+  other: AgreementCase[];
+  note: string;
+};
+
 type DetectorStat = {
   detector: string;
   produced: number;
@@ -64,6 +95,9 @@ type Board = {
   places: PlaceCount[];
   types: TypeCount[];
   detectors: DetectorStat[];
+  agreement: Agreement;
+  coverage: Coverage;
+  phases: PhaseCount[];
   recent: RecentEvent[];
 };
 
@@ -133,7 +167,7 @@ export function OpsBoard({ onSelectEvent }: { onSelectEvent?: (id: number) => vo
     );
   }
 
-  const { traffic, detections, places, types, recent, series, detectors } = board;
+  const { traffic, detections, places, types, recent, series, detectors, agreement, coverage, phases } = board;
   const peak = Math.max(1, ...series.map((point) => point.count));
   const newest = recent[0];
   const stale = traffic.last_fix_age_seconds !== null && traffic.last_fix_age_seconds > 300;
@@ -287,8 +321,94 @@ export function OpsBoard({ onSelectEvent }: { onSelectEvent?: (id: number) => vo
 
           <div className="ops-section">
             <div className="ops-section-head">
+              <span>Agreement</span>
+              <span className="ops-muted">{agreement.clusters} encounters · 3 min matching</span>
+            </div>
+            <ul className="ops-breakdown ops-agreement">
+              <li>
+                <span className="ops-break-name">
+                  Seen by both
+                  <span className="ops-break-sub">snapshot and engine agree on the encounter</span>
+                </span>
+                <span className="ops-break-count">{agreement.both.length}</span>
+              </li>
+              <li>
+                <span className="ops-break-name">
+                  Snapshot only
+                  <span className="ops-break-sub">the engine, looking at history, did not report it</span>
+                </span>
+                <span className="ops-break-count">{agreement.snapshot_only.length}</span>
+              </li>
+              <li>
+                <span className="ops-break-name">
+                  Engine only
+                  <span className="ops-break-sub">a single-moment comparison cannot see this shape</span>
+                </span>
+                <span className="ops-break-count">
+                  {agreement.openaria_only.length}
+                  {agreement.openaria_only.length > 0 && (
+                    <button
+                      className="ops-link"
+                      onClick={() => onSelectEvent?.(agreement.openaria_only[0].ids[0])}
+                    >
+                      open
+                    </button>
+                  )}
+                </span>
+              </li>
+            </ul>
+            <p className="ops-note">{agreement.note}</p>
+          </div>
+
+          <div className="ops-section">
+            <div className="ops-section-head">
+              <span>Coverage</span>
+              <span className="ops-muted">last {coverage.window_minutes} min · {coverage.aircraft} aircraft</span>
+            </div>
+            <ul className="ops-breakdown">
+              <li>
+                <span className="ops-break-name">
+                  Phase now
+                  <span className="ops-break-sub">
+                    {phases.map((entry) => `${entry.aircraft} ${entry.phase}`).join(" · ")}
+                  </span>
+                </span>
+                <span className="ops-break-count">{coverage.aircraft}</span>
+              </li>
+              <li>
+                <span className="ops-break-name">
+                  Sample interval
+                  <span className="ops-break-sub">
+                    median {coverage.median_interval_s ?? "—"} s · p95 {coverage.p95_interval_s ?? "—"} s ·
+                    {" "}{coverage.median_samples ?? "—"} samples per aircraft
+                  </span>
+                </span>
+                <span className="ops-break-count">
+                  {coverage.median_interval_s !== null ? `${coverage.median_interval_s}s` : "—"}
+                </span>
+              </li>
+              <li>
+                <span className="ops-break-name">
+                  Gaps and short tracks
+                  <span className="ops-break-sub">
+                    {coverage.with_long_gap} aircraft with a gap over 2 min · longest{" "}
+                    {coverage.longest_gap_s !== null ? `${Math.round(coverage.longest_gap_s)} s` : "—"}
+                  </span>
+                </span>
+                <span className="ops-break-count">{coverage.insufficient_track} short</span>
+              </li>
+            </ul>
+            <p className="ops-note">
+              Under {coverage.insufficient_track} aircraft carry too few positions to
+              reconstruct a track. A closest approach finer than the distance travelled in
+              one interval is interpolation, not observation.
+            </p>
+          </div>
+
+          <div className="ops-section">
+            <div className="ops-section-head">
               <span>Detectors</span>
-              <span className="ops-muted">yield · validation</span>
+              <span className="ops-muted">yield · re-judged valid</span>
             </div>
             {detectors.length === 0 ? (
               <p className="ops-empty">No detector has produced anything in this window.</p>
