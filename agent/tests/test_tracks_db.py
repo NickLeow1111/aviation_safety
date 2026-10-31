@@ -27,6 +27,8 @@ class FakeCursor:
         self.owner.statements.append((" ".join(sql.split()), params))
 
     def executemany(self, sql, rows):
+        if self.owner.fail_on and self.owner.fail_on in sql:
+            raise RuntimeError("database went away")
         self.owner.statements.append((" ".join(sql.split()), rows))
 
     def fetchone(self):
@@ -102,6 +104,43 @@ def test_nothing_to_write_is_not_an_error():
     conn = FakeConn()
     assert tracks_db.persist(conn, []) == 0
     assert conn.statements == []
+
+
+def test_the_aircraft_type_is_remembered_per_airframe_not_per_position():
+    """Only the community feed reports a type, and only on some of its fixes.
+
+    Merged polls hand back OpenSky rows for the same aircraft, so a per-position column
+    would keep erasing what we know — the meta upsert is what makes the type panel
+    possible.
+    """
+    conn = FakeConn()
+    tracks_db.persist(
+        conn,
+        [
+            {"icao24": "76CE87", "lat": 1.3, "lon": 103.9, "altitude_ft": 30000, "aircraft_type": "B38M"},
+            {"icao24": "76CD88", "lat": 1.4, "lon": 104.0, "altitude_ft": 12000, "callsign": "SIA1"},
+        ],
+        now=1000.0,
+    )
+
+    meta = conn.executed("INSERT INTO aircraft_meta")
+    assert len(meta) == 1
+    sql, rows = meta[0]
+    # The blank fix must not overwrite a remembered type.
+    assert "COALESCE(EXCLUDED.aircraft_type, aircraft_meta.aircraft_type)" in sql
+    assert ("76ce87", "B38M", None, 1000.0, 1000.0) in rows
+    assert ("76cd88", None, "SIA1", 1000.0, 1000.0) in rows
+
+
+def test_a_failing_meta_upsert_does_not_cost_the_positions():
+    conn = FakeConn(fail_on="aircraft_meta")
+    rows = tracks_db.persist(
+        conn,
+        [{"icao24": "a", "lat": 1.3, "lon": 103.9, "altitude_ft": 1000}],
+        now=1000.0,
+    )
+    assert rows == 0
+    assert conn.rolled_back == 1
 
 
 def test_old_samples_are_pruned_at_most_hourly():

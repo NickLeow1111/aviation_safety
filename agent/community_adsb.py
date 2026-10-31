@@ -91,6 +91,8 @@ def normalise(payload: dict[str, Any], now: float | None = None) -> list[dict[st
                 "on_ground": on_ground,
                 "observed_at": fixed_at,
                 "source": "adsb.lol",
+                # adsb.lol is the only feed of the two that says what the aircraft is.
+                "aircraft_type": (str(item.get("t") or "").strip().upper() or None),
             }
         )
     return aircraft

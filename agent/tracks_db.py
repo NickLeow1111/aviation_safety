@@ -105,6 +105,7 @@ def warm(conn: Any, now: float | None = None) -> int:
 def persist(conn: Any, aircraft: Iterable[dict[str, Any]], now: float | None = None) -> int:
     """Write one poll's positions. Returns the number of rows written."""
     moment = time.time() if now is None else now
+    aircraft = list(aircraft)
     rows = [
         (
             str(item["icao24"]),
@@ -117,6 +118,7 @@ def persist(conn: Any, aircraft: Iterable[dict[str, Any]], now: float | None = N
             item.get("vertical_rate_fpm"),
             bool(item.get("on_ground")),
             item.get("callsign"),
+            item.get("aircraft_type"),
         )
         for item in aircraft
         if item.get("icao24") and item.get("lat") is not None and item.get("lon") is not None
@@ -129,16 +131,46 @@ def persist(conn: Any, aircraft: Iterable[dict[str, Any]], now: float | None = N
             cur.executemany(
                 """INSERT INTO aircraft_track
                    (icao24, observed_at, lat, lon, altitude_ft, ground_speed_kt,
-                    track_deg, vertical_rate_fpm, on_ground, callsign)
-                   VALUES (%s, to_timestamp(%s), %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    track_deg, vertical_rate_fpm, on_ground, callsign, aircraft_type)
+                   VALUES (%s, to_timestamp(%s), %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 rows,
             )
+            _persist_meta(cur, aircraft, moment)
             _maybe_prune(cur, moment)
     except Exception as exc:  # noqa: BLE001
         _log_once("could not persist track samples", exc)
         conn.rollback()
         return 0
     return len(rows)
+
+
+def _persist_meta(cur: Any, aircraft: list[dict[str, Any]], moment: float) -> None:
+    """Remember what each airframe is, without letting a blank fix blank the record.
+
+    Only the community feed reports a type, and only on some of its fixes. Merged polls
+    hand back OpenSky rows for the same aircraft, so writing the type per position would
+    keep erasing it; COALESCE keeps the last thing we knew.
+    """
+    rows = [
+        (
+            str(item["icao24"]).lower(),
+            item.get("aircraft_type"),
+            (item.get("callsign") or None),
+        )
+        for item in aircraft
+        if item.get("icao24")
+    ]
+    if not rows:
+        return
+    cur.executemany(
+        """INSERT INTO aircraft_meta (icao24, aircraft_type, callsign, first_seen, last_seen)
+           VALUES (%s, %s, %s, to_timestamp(%s), to_timestamp(%s))
+           ON CONFLICT (icao24) DO UPDATE
+              SET aircraft_type = COALESCE(EXCLUDED.aircraft_type, aircraft_meta.aircraft_type),
+                  callsign      = COALESCE(EXCLUDED.callsign, aircraft_meta.callsign),
+                  last_seen     = EXCLUDED.last_seen""",
+        [(icao24, kind, callsign, moment, moment) for icao24, kind, callsign in rows],
+    )
 
 
 def _maybe_prune(cur: Any, moment: float) -> None:

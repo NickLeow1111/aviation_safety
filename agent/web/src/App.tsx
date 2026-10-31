@@ -71,6 +71,8 @@ function saveSettings(settings: { customPrompt: string; theme: Theme }) {
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [view, setView] = useState<"chat" | "map">("chat");
+  // Set when the ops board sends the user to the map for one specific detection.
+  const [pendingEvent, setPendingEvent] = useState<number | null>(null);
   const [liveState, setLiveState] = useState<{ enabled: boolean; bbox: number[] | null }>({
     enabled: false,
     bbox: null,
@@ -278,7 +280,7 @@ export default function App() {
 
       {view === "map" ? (
         <Suspense fallback={<div className="map-loading">Loading the map…</div>}>
-          <MapView onLiveChange={setLiveState} />
+          <MapView onLiveChange={setLiveState} focusEventId={pendingEvent} />
         </Suspense>
       ) : (
       <div className={`app-shell ${charts.length === 0 ? "app-shell--solo" : ""}`}>
@@ -291,6 +293,10 @@ export default function App() {
           ready={ready}
           readyMsg={readyMsg}
           suggestions={STARTER_PROMPTS}
+          onSelectEvent={(id) => {
+            setPendingEvent(id);
+            setView("map");
+          }}
         />
 
         {/* The output pane exists for artefacts a chart or tool produced. With

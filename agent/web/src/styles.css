@@ -2910,3 +2910,126 @@ table.data tbody tr:hover {
   color: #8a5a12; background: rgba(196, 132, 26, 0.1);
   border-left: 2px solid #c4841a; border-radius: 4px; padding: 7px 9px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Operations board                                                     */
+/* ------------------------------------------------------------------ */
+/* Sits above the thread: the standing question ("what is happening")
+   should not need to be asked in the composer. Everything here is a
+   counted figure from the store, so the panels stay quiet and dense. */
+
+.ops {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-soft);
+  flex: 0 0 auto;
+}
+
+.ops-top {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px;
+  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ops-title { font-weight: 700; color: var(--navy); letter-spacing: 0.08em; }
+
+.ops-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; letter-spacing: 0.04em; color: var(--muted);
+  text-transform: none;
+}
+.ops-status--warn { color: #b26a00; }
+
+.ops-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #2f9e68;
+  box-shadow: 0 0 0 3px rgba(47, 158, 104, 0.14);
+}
+.ops-status--warn .ops-dot { background: #c4841a; box-shadow: 0 0 0 3px rgba(196, 132, 26, 0.16); }
+
+.ops-toggle {
+  margin-left: auto;
+  border: 0; background: transparent; cursor: pointer;
+  font: inherit; font-size: 10px; letter-spacing: 0.04em;
+  color: var(--muted); padding: 2px 4px; text-transform: none;
+}
+.ops-toggle:hover { color: var(--navy); }
+
+.ops-body { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 11px; }
+
+.ops-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ops-kpi {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 9px; display: flex; flex-direction: column; gap: 2px;
+}
+.ops-kpi-value { font-size: 18px; font-weight: 650; color: var(--navy); line-height: 1.1; }
+.ops-kpi-label { font-size: 9.5px; letter-spacing: 0.04em; color: var(--muted); text-transform: uppercase; }
+
+/* The day in one strip. Bar heights are relative to the busiest hour. */
+.ops-series {
+  display: flex; align-items: flex-end; gap: 2px;
+  height: 30px; padding: 2px 0;
+}
+.ops-bar { flex: 1 1 0; background: var(--navy); border-radius: 2px; min-height: 2px; }
+
+.ops-section { display: flex; flex-direction: column; gap: 5px; }
+.ops-section-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--muted);
+}
+.ops-muted { font-size: 10px; color: var(--muted-light); text-transform: none; letter-spacing: 0.02em; }
+.ops-empty { margin: 0; font-size: 11px; color: var(--muted); }
+
+.ops-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.ops-row {
+  width: 100%; display: grid;
+  grid-template-columns: 6px 42px 1fr 54px auto auto;
+  align-items: center; gap: 7px;
+  padding: 5px 6px; border: 0; border-radius: 7px;
+  background: transparent; cursor: pointer; text-align: left;
+  font: inherit; color: var(--text);
+}
+.ops-row:hover { background: rgba(27, 42, 74, 0.05); }
+
+.ops-sev { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-light); }
+.ops-sev--high { background: #c0392b; }
+.ops-sev--medium { background: #c4841a; }
+.ops-sev--low { background: #2f7f9e; }
+
+.ops-time { font-size: 10.5px; color: var(--muted); }
+.ops-what { font-size: 11.5px; text-transform: capitalize; }
+.ops-where { font-size: 10.5px; color: var(--muted); }
+.ops-who { font-size: 10.5px; color: var(--navy); font-weight: 600; }
+.ops-metric { font-size: 10.5px; color: #c0392b; font-family: var(--font-mono); }
+
+.ops-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+.ops-breakdown { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ops-breakdown li {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: baseline;
+  font-size: 11px;
+}
+.ops-break-name { display: flex; flex-direction: column; min-width: 0; }
+.ops-break-sub {
+  font-size: 9.5px; color: var(--muted-light);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ops-break-count { font-size: 11px; font-weight: 650; color: var(--navy); }
+.ops-break-bar {
+  grid-column: 1 / -1; height: 3px; border-radius: 2px;
+  background: rgba(27, 42, 74, 0.08); overflow: hidden;
+}
+.ops-break-bar > span { display: block; height: 100%; background: var(--navy-light); border-radius: 2px; }
+
+.ops-foot {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 10px; color: var(--muted);
+  border-top: 1px solid var(--border); padding-top: 7px;
+}
+
+@media (max-width: 900px) {
+  .ops-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ops-columns { grid-template-columns: 1fr; }
+}

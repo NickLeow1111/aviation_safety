@@ -26,6 +26,7 @@ import envfile
 import store
 from api_assistant import router as assistant_router
 from api_events import router as events_router
+from api_ops import router as ops_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("safety-intel-bot")
@@ -53,6 +54,7 @@ mimetypes.add_type("text/javascript", ".mjs")
 app = FastAPI(title="Safety Intelligence Bot")
 app.include_router(events_router)
 app.include_router(assistant_router)
+app.include_router(ops_router)
 
 
 def _demo_mode_enabled() -> bool:

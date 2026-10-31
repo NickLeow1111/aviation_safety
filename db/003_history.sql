@@ -23,8 +23,14 @@ CREATE TABLE IF NOT EXISTS aircraft_track (
     track_deg         DOUBLE PRECISION,
     vertical_rate_fpm DOUBLE PRECISION,
     on_ground         BOOLEAN          NOT NULL DEFAULT FALSE,
-    callsign          TEXT
+    callsign          TEXT,
+    -- ICAO type designator (A320, B789). Only the community feed reports it, so it is
+    -- null on OpenSky-only fixes; the dashboard reads the newest non-null per aircraft.
+    aircraft_type     TEXT
 );
+
+-- Existing installs predate the column; adding it is additive and safe to repeat.
+ALTER TABLE aircraft_track ADD COLUMN IF NOT EXISTS aircraft_type TEXT;
 
 -- The only query shape that matters: one aircraft's recent track.
 CREATE INDEX IF NOT EXISTS aircraft_track_icao_time
@@ -32,6 +38,17 @@ CREATE INDEX IF NOT EXISTS aircraft_track_icao_time
 
 CREATE INDEX IF NOT EXISTS aircraft_track_time
     ON aircraft_track (observed_at DESC);
+
+-- What each airframe is. Type designators arrive only from the community feed and only
+-- on some fixes, so they are remembered per aircraft rather than per position: an
+-- OpenSky fix for the same aircraft must not erase what we already know about it.
+CREATE TABLE IF NOT EXISTS aircraft_meta (
+    icao24        TEXT PRIMARY KEY,
+    aircraft_type TEXT,
+    callsign      TEXT,
+    first_seen    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS track_event (
     id           BIGSERIAL PRIMARY KEY,

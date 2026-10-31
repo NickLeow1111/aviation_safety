@@ -263,8 +263,11 @@ function planeImage(colour: string, outline = "#ffffff"): ImageData {
 
 export function MapView({
   onLiveChange,
+  focusEventId = null,
 }: {
   onLiveChange?: (state: { enabled: boolean; bbox: number[] | null }) => void;
+  /** An event the ops board asked to see; the map opens it once the rows arrive. */
+  focusEventId?: number | null;
 } = {}) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
@@ -790,6 +793,14 @@ export function MapView({
     setSelected(row);
     map.current?.flyTo({ center: [row.lon, row.lat], zoom: Math.max(map.current.getZoom(), 11), duration: 600 });
   }, []);
+
+  // The ops board asked for one specific event. Wait for the rows to arrive, then open
+  // it the same way a click in the table would.
+  useEffect(() => {
+    if (focusEventId === null) return;
+    const row = events.find((event) => event.id === focusEventId);
+    if (row) focusEvent(row);
+  }, [focusEventId, events, focusEvent]);
 
   const typeList = useMemo(() => Object.keys(counts).sort(), [counts]);
   const totalShown = events.length;
