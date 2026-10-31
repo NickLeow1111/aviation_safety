@@ -220,3 +220,56 @@ def test_encounter_ignores_unparseable_lines():
     )
     assert encounter is not None
     assert encounter["tracks"][0]["count"] == 2
+
+
+# --------------------------------------------------------------------------- #
+# what reaches the engine
+# --------------------------------------------------------------------------- #
+
+
+class _Cursor:
+    def __init__(self, rows, log):
+        self.rows = rows
+        self.log = log
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, query, params=None):
+        self.log.append((" ".join(query.split()), params))
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+class _Connection:
+    def __init__(self, rows):
+        self.rows = rows
+        self.log = []
+
+    def cursor(self):
+        return _Cursor(self.rows, self.log)
+
+
+def test_the_export_leaves_ground_traffic_out(tmp_path):
+    """A rolling-out aircraft reported at 0 ft must not reach the engine as airborne.
+
+    The engine has no idea a position is on a runway; it only knows height. Handing it
+    a 0 ft track marked airborne is how an arrival sequence becomes an encounter.
+    """
+    from datetime import datetime, timezone
+
+    conn = _Connection([])
+    openaria.export_tracks(
+        conn,
+        since=datetime(2026, 10, 31, 3, 0, tzinfo=timezone.utc),
+        until=datetime(2026, 10, 31, 4, 0, tzinfo=timezone.utc),
+        path=tmp_path / "tracks.csv",
+    )
+    query, params = conn.log[0]
+    assert "on_ground = false" in query
+    assert "altitude_ft > %s" in query
+    assert params[2] == 100.0, "the ground floor travels with the query"

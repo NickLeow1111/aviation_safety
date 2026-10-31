@@ -30,6 +30,14 @@ DEFAULTS = {
     "enabled": True,
 }
 
+# The feed's on_ground flag cannot carry this on its own. SIA7403 was recorded rolling
+# out at 147 kt, 0 ft, flagged airborne — which put it inside the separation minimum of
+# an aircraft on short final, and the map called a normal arrival sequence a loss of
+# separation. Every row below 100 ft in this feed reads as taxiing or rolling out, so
+# height settles it: below this floor a position is ground traffic, whatever the flag
+# says. Singapore's aerodromes sit between 22 ft (Changi) and 65 ft (Paya Lebar).
+GROUND_FLOOR_FT = 100.0
+
 # Speed limits belong to a phase of flight, not to the aircraft. 450 kt at 35,000 ft
 # is ordinary cruise; 450 kt at 2,000 ft is an emergency. One global number flags
 # either everything or nothing, so the limit is banded by altitude with the standard
@@ -151,6 +159,25 @@ def _usable(aircraft: dict[str, Any]) -> bool:
     return aircraft.get("lat") is not None and aircraft.get("lon") is not None
 
 
+def is_airborne(aircraft: dict[str, Any], floor_ft: float = GROUND_FLOOR_FT) -> bool:
+    """Whether a position is airborne traffic, as the separation minima mean it.
+
+    Either signal is enough to call it ground: the transponder's own flag, or a
+    reported height at or below the floor. Unknown height stays in play — an aircraft
+    we cannot place vertically is still worth comparing horizontally, and the vertical
+    test in `evaluate` will treat it as unknown rather than safe.
+    """
+    if aircraft.get("on_ground"):
+        return False
+    altitude = aircraft.get("altitude_ft")
+    if altitude is None:
+        return True
+    try:
+        return float(altitude) > floor_ft
+    except (TypeError, ValueError):
+        return True
+
+
 def evaluate(aircraft: Iterable[dict[str, Any]], rules: Rules) -> dict[str, Any]:
     """Apply the rules to one snapshot of traffic.
 
@@ -168,7 +195,7 @@ def evaluate(aircraft: Iterable[dict[str, Any]], rules: Rules) -> dict[str, Any]
     all_usable = [item for item in aircraft if _usable(item)]
     tracked = all_usable
     if rules.ignore_ground:
-        tracked = [item for item in tracked if not item.get("on_ground")]
+        tracked = [item for item in tracked if is_airborne(item)]
 
     conflicts: list[dict[str, Any]] = []
     for index, first in enumerate(tracked):

@@ -82,6 +82,30 @@ def test_ground_traffic_is_excluded_by_default():
     assert len(detect.evaluate(pair, detect.Rules(ignore_ground=False))["conflicts"]) == 1
 
 
+def test_an_aircraft_rolling_out_is_ground_traffic_even_if_the_flag_says_airborne():
+    """SIA7403: 0 ft, 147 kt, on_ground false, 0.93 NM from an aircraft on short final.
+
+    The flag was wrong; the height was not. That pair was reported as a loss of
+    separation, and it was an arrival sequence.
+    """
+    pair = [
+        aircraft("SIA188", 1.350, 103.990, 225, speed=150),
+        aircraft("SIA7403", 1.362, 103.990, 0, speed=147, on_ground=False),
+    ]
+    assert detect.evaluate(pair, detect.Rules())["conflicts"] == []
+    # Switching the rule off still shows it: the arithmetic is not hidden, only the
+    # default verdict changes.
+    assert len(detect.evaluate(pair, detect.Rules(ignore_ground=False))["conflicts"]) == 1
+
+
+def test_the_ground_floor_is_a_hundred_feet():
+    just_under = aircraft("LOW1", 1.350, 103.990, 90)
+    just_over = aircraft("LOW2", 1.350, 103.990, 120)
+    assert detect.is_airborne(just_under) is False
+    assert detect.is_airborne(just_over) is True
+    assert detect.GROUND_FLOOR_FT == 100.0
+
+
 def test_unknown_altitude_still_reports_proximity():
     pair = [aircraft("AAL1", 1.350, 103.990, None), aircraft("AAL2", 1.355, 103.990, 7000)]
     result = detect.evaluate(pair, detect.Rules())

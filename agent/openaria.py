@@ -29,6 +29,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
 
+import detect
+
 # Where the uber-jar lives. It is a 49 MB binary and is deliberately not in git;
 # point OPENARIA_JAR at it, or drop it in vendor/.
 JAR_ENV = "OPENARIA_JAR"
@@ -83,17 +85,24 @@ def csv_line(track: Mapping[str, Any]) -> str:
 
 
 def export_tracks(conn: Any, *, since: datetime, until: datetime, path: Path) -> int:
-    """Write the stored positions in a window out as OpenARIA CSV. Returns row count."""
+    """Write the stored positions in a window out as OpenARIA CSV. Returns row count.
+
+    Ground traffic is left out. OpenARIA reasons about airborne pairs, and a rolling-out
+    aircraft reported at 0 ft while flagged airborne becomes an aircraft "at" the runway
+    threshold — which is how a normal arrival sequence turns into a reported encounter.
+    """
     query = """
         SELECT icao24, observed_at, lat, lon, altitude_ft, callsign
           FROM aircraft_track
          WHERE observed_at >= %s AND observed_at < %s
            AND lat IS NOT NULL AND lon IS NOT NULL AND altitude_ft IS NOT NULL
+           AND on_ground = false
+           AND altitude_ft > %s
          ORDER BY observed_at, icao24
     """
     written = 0
     with conn.cursor() as cur:
-        cur.execute(query, (since, until))
+        cur.execute(query, (since, until, detect.GROUND_FLOOR_FT))
         with path.open("w", encoding="utf-8", newline="\n") as handle:
             for icao24, observed_at, lat, lon, altitude_ft, callsign in cur:
                 handle.write(

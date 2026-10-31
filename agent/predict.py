@@ -15,6 +15,8 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable
 
+import detect
+
 DEFAULT_HORIZON_SECONDS = 120.0
 STEP_SECONDS = 5.0
 # Only pairs this close are worth projecting: beyond it, nothing in two minutes.
@@ -91,7 +93,7 @@ def evaluate(
         if item.get("lat") is not None
         and item.get("lon") is not None
         and item.get("ground_speed_kt") is not None
-        and not item.get("on_ground")
+        and detect.is_airborne(item)
     ]
 
     predictions: list[dict[str, Any]] = []
