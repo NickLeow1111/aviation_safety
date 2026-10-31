@@ -38,6 +38,22 @@ printf 'OpenSky client secret (typing is hidden): '
 read -r -s CLIENT_SECRET
 printf '\n'
 
+# A doubled paste is the failure we have actually seen: the value arrives twice, the
+# secret is rejected, and nothing looks wrong until the live feed 502s. Catch it here,
+# where the fix is obvious, rather than in a browser console later.
+SECRET_LEN=${#CLIENT_SECRET}
+if [ "$SECRET_LEN" -gt 90 ]; then
+    printf 'That secret is %s characters — longer than any OpenSky secret.\n' "$SECRET_LEN"
+    printf 'It looks like it was pasted twice. Nothing has been saved.\n'
+    exit 1
+fi
+case "$CLIENT_SECRET" in
+    *[![:print:]]*)
+        printf 'That secret contains a control character — paste it again. Nothing has been saved.\n'
+        exit 1
+        ;;
+esac
+
 if [ -z "${CLIENT_ID}" ] || [ -z "${CLIENT_SECRET}" ]; then
   echo "Both values are required — nothing was written." >&2
   exit 1
@@ -69,3 +85,53 @@ echo
 echo "Then confirm:"
 echo "  curl -s localhost:7700/api/live/status"
 echo "  (expect \"mode\": \"authenticated\")"
+
+# ---------------------------------------------------------------------------
+# Prove the credential works before walking away from the terminal.
+# ---------------------------------------------------------------------------
+printf '\nChecking the credential with OpenSky (no values shown)...\n'
+if [ -x "$ROOT/agent/.venv/bin/python" ]; then
+    ( cd "$ROOT/agent" && ./.venv/bin/python - <<'PYCHECK'
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+sys.path.insert(0, os.getcwd())
+import envfile  # noqa: E402
+
+envfile.load(force=True)
+client_id = os.environ.get("OPENSKY_CLIENT_ID", "")
+secret = os.environ.get("OPENSKY_CLIENT_SECRET", "")
+if not (client_id and secret):
+    print("  no credential in the environment after saving — check the file")
+    raise SystemExit(1)
+
+body = urllib.parse.urlencode(
+    {"grant_type": "client_credentials", "client_id": client_id, "client_secret": secret}
+).encode()
+request = urllib.request.Request(
+    "https://auth.opensky-network.org/auth/realms/opensky-network/"
+    "protocol/openid-connect/token",
+    data=body,
+    headers={"Content-Type": "application/x-www-form-urlencoded"},
+)
+try:
+    with urllib.request.urlopen(request, timeout=25) as response:
+        response.read()
+    print("  accepted — the live feed will use the 4,000 credit/day budget")
+    raise SystemExit(0)
+except urllib.error.HTTPError as exc:
+    print(f"  rejected (HTTP {exc.code}) — the client id or secret does not match")
+    print("  copy both from your OpenSky account page and run this again")
+    raise SystemExit(1)
+except Exception as exc:  # noqa: BLE001
+    print(f"  could not reach OpenSky to check ({type(exc).__name__}); credential saved anyway")
+    raise SystemExit(0)
+PYCHECK
+    )
+else
+    echo "  (skipped: agent virtualenv not found)"
+fi
+

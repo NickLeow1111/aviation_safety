@@ -156,6 +156,7 @@ type LivePayload = {
   anomalies?: Anomalies;
   predicted?: Predicted;
   motion?: Motion;
+  credential_warning?: string;
   count: number;
   mode: string;
   credits_used: number;
@@ -504,7 +505,19 @@ export function MapView({
       .join(",");
     try {
       const response = await fetch(`/api/live?bbox=${bbox}`);
-      const body = await response.json();
+      // A tunnel or proxy failure answers with an HTML page, and JSON.parse then throws
+      // something like "Unexpected token '<'" — which tells the reader nothing.
+      const text = await response.text();
+      let body: any = null;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        throw new Error(
+          response.ok
+            ? "the live feed answered with something that was not data — the tunnel or proxy is probably down"
+            : `the live feed is unreachable (HTTP ${response.status})`,
+        );
+      }
       if (!response.ok) throw new Error(body.detail ?? `HTTP ${response.status}`);
       setLiveData(body as LivePayload);
       const liveBody = body as LivePayload;
@@ -524,7 +537,11 @@ export function MapView({
       );
       setLiveError(null);
     } catch (cause) {
-      setLiveError(String(cause).replace("Error: ", ""));
+      // Never mangle the message: an old version stripped "Error: " from anywhere in
+      // the string, turning "SyntaxError: …" into "Syntax …" and hiding the cause.
+      const message =
+        cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "the live feed failed";
+      setLiveError(message);
     }
   }, []);
 
@@ -696,6 +713,11 @@ export function MapView({
             </p>
           )}
           {liveNote && live && <p className="map-live-hint">{liveNote}</p>}
+          {liveData?.credential_warning && live && (
+            <p className="map-warning" data-cred-warning>
+              {liveData.credential_warning} Showing the anonymous allowance meanwhile.
+            </p>
+          )}
           {liveError && live && <p className="map-error">{liveError}</p>}
           {!live && liveStatus && (
             <p className="map-live-hint">

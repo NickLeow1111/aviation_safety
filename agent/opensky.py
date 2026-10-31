@@ -22,6 +22,7 @@ import envfile
 import json
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -99,6 +100,11 @@ def credentials() -> tuple[str | None, str | None]:
     return os.environ.get("OPENSKY_CLIENT_ID"), os.environ.get("OPENSKY_CLIENT_SECRET")
 
 
+def auth_state() -> str | None:
+    """The last credential problem, or None when authentication is working."""
+    return _auth_state.get("error")
+
+
 def credential_mode() -> str:
     client_id, secret = credentials()
     return "authenticated" if client_id and secret else "anonymous"
@@ -124,6 +130,7 @@ def credits_for(bbox: Sequence[float]) -> int:
 
 _token_lock = asyncio.Lock()
 _token: dict[str, Any] = {"value": None, "expires_at": 0.0}
+_auth_state: dict[str, Any] = {"error": None}
 
 
 async def access_token() -> str | None:
@@ -149,11 +156,26 @@ async def access_token() -> str | None:
 
         try:
             payload = await asyncio.to_thread(_fetch)
+        except urllib.error.HTTPError as exc:
+            # 401/403 means the credential itself is wrong. That is not something to
+            # paper over by quietly spending the small anonymous allowance instead:
+            # say so, and let the person who can fix it see the real reason.
+            if exc.code in (400, 401, 403):
+                _auth_state["error"] = f"rejected ({exc.code})"
+                raise OpenSkyError(
+                    "OpenSky rejected the configured API credentials. Re-run "
+                    "scripts/set_opensky_creds.sh and paste the client secret once, "
+                    "in full, with no line breaks."
+                ) from None
+            _auth_state["error"] = f"token endpoint error ({exc.code})"
+            raise OpenSkyError(f"OpenSky token request failed (HTTP {exc.code}); falling back to anonymous") from None
         except Exception as exc:  # noqa: BLE001 - degrade to anonymous rather than fail
             # Deliberately does not include the exception text: a failed token call
             # can echo the request body, and the body contains the secret.
+            _auth_state["error"] = type(exc).__name__
             raise OpenSkyError(f"OpenSky token request failed ({type(exc).__name__}); falling back to anonymous") from None
 
+        _auth_state["error"] = None
         _token["value"] = payload.get("access_token")
         _token["expires_at"] = time.time() + float(payload.get("expires_in", 1800))
         return _token["value"]
@@ -300,15 +322,48 @@ async def live_states(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
 
         token = None
         mode = credential_mode()
+        cred_warning = None
         if mode == "authenticated":
             try:
                 token = await access_token()
-            except OpenSkyError:
+            except OpenSkyError as exc:
+                # A rejected credential is the operator's problem to fix, not a reason
+                # to leave them staring at an empty map: fall back to the small
+                # anonymous allowance and say, in the panel, why.
+                cred_warning = str(exc)
                 token = None
 
+        previous = _cache.get(key)
         try:
             payload = await asyncio.to_thread(_request_states, bbox, token)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                # OpenSky states when the limit lifts. Guessing "midnight UTC" would be
+                # wrong — their day rolls over on their own clock — and sends the reader
+                # back to a panel that cannot possibly work yet.
+                retry = exc.headers.get("X-Rate-Limit-Retry-After-Seconds") if exc.headers else None
+                when = ""
+                if retry and str(retry).isdigit():
+                    when = f" OpenSky says try again in about {int(retry) / 3600:.1f} hours."
+                raise OpenSkyError(
+                    "OpenSky is refusing this source's traffic requests"
+                    + (
+                        " (anonymous allowance: small, per-IP, shared with every script "
+                        "on this machine — API credentials give ten times the budget)"
+                        if token is None
+                        else " (the authenticated allowance)"
+                    )
+                    + "."
+                    + when
+                ) from None
+            stale = _stale(previous, exc.code)
+            if stale:
+                return stale
+            raise OpenSkyError(f"OpenSky request failed (HTTP {exc.code}).") from None
         except Exception as exc:  # noqa: BLE001
+            stale = _stale(previous, None, type(exc).__name__)
+            if stale:
+                return stale
             raise OpenSkyError(f"OpenSky request failed: {type(exc).__name__}") from None
 
         spend = record_spend(conn, cost)
@@ -330,8 +385,38 @@ async def live_states(conn: Any, bbox: Sequence[float]) -> dict[str, Any]:
             "age_seconds": 0.0,
             "cached": False,
         }
+        if cred_warning:
+            result["credential_warning"] = cred_warning
         _cache[key] = {"payload": result, "fetched_at": time.time()}
         return result
+
+
+STALE_LIMIT_SECONDS = 900.0
+
+
+def _stale(previous: dict[str, Any] | None, code: int | None, reason: str | None = None) -> dict[str, Any] | None:
+    """Serve the last snapshot when OpenSky will not answer, and label it as old.
+
+    "No contact" is worse than a fifteen-minute-old picture for someone watching
+    traffic: a stale picture with its age attached is still information, and it beats
+    an empty map. Anything older than STALE_LIMIT_SECONDS is left to fail, because a
+    quarter of an hour of silence is no longer a picture of now.
+    """
+    if not previous:
+        return None
+    age = time.time() - previous["fetched_at"]
+    if age > STALE_LIMIT_SECONDS:
+        return None
+    payload = dict(previous["payload"])
+    payload["age_seconds"] = round(age, 1)
+    payload["cached"] = True
+    payload["stale"] = True
+    reason_text = f"HTTP {code}" if code is not None else (reason or "no answer")
+    payload["credential_warning"] = (
+        f"OpenSky did not answer ({reason_text}) — showing the last snapshot, "
+        f"{int(age)} seconds old. It is not the current picture."
+    )
+    return payload
 
 
 def cache_size() -> int:

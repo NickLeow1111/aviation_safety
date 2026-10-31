@@ -33,7 +33,9 @@ async def live_traffic(bbox: str = Query(..., description="min_lat,min_lon,max_l
         with store.connect() as conn:
             return await live.snapshot(conn, box)
     except opensky.OpenSkyError as exc:
-        raise HTTPException(429 if "budget" in str(exc) else 502, str(exc)) from exc
+        text = str(exc)
+        code = 429 if ("budget" in text or "allowance" in text) else 502
+        raise HTTPException(code, text) from exc
 
 
 @router.get("/tracks/history")
@@ -61,6 +63,13 @@ def live_status() -> dict[str, Any]:
     return {
         "mode": usage.mode,
         "credential_configured": opensky.credential_mode() == "authenticated",
+        # Configured is not the same as accepted. The panel used to say "authenticated"
+        # while every token request was being rejected, which is worse than saying nothing.
+        "credential_state": (
+            "none"
+            if opensky.credential_mode() != "authenticated"
+            else ("rejected: " + str(opensky.auth_state()) if opensky.auth_state() else "accepted")
+        ),
         "credits_used": usage.credits,
         "credits_budget": usage.budget,
         "credits_remaining": usage.remaining,
