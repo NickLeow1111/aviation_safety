@@ -303,6 +303,60 @@ def events_from_run(directory: Path, aerodromes: Iterable[Mapping[str, Any]] | N
     return rows
 
 
+def encounter_tracks(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The two tracks OpenARIA walked, as drawable positions.
+
+    It echoes back the exact CSV lines it was given, so the encounter the map draws is
+    the data that produced the event — not a re-request to a live feed that has since
+    moved on. Returns None when the payload carries no usable track.
+    """
+    tracks: list[dict[str, Any]] = []
+    for which in ("0", "1"):
+        points: list[list[float]] = []
+        callsign = None
+        icao24 = None
+        for line in payload.get(f"track{which}") or []:
+            if not isinstance(line, str):
+                continue
+            parts = line.split(",")
+            if len(parts) < 7:
+                continue
+            try:
+                lat = float(parts[4])
+                lon = float(parts[5])
+            except (TypeError, ValueError):
+                continue
+            altitude = None
+            try:
+                altitude = float(parts[6])
+            except (TypeError, ValueError):
+                pass
+            points.append([lon, lat, altitude if altitude is not None else 0.0])
+            if icao24 is None and len(parts) >= 4:
+                icao24 = parts[3].strip().lower() or None
+            if callsign is None and len(parts) >= 8 and parts[7].strip():
+                callsign = parts[7].strip()
+
+        if len(points) >= 2:
+            tracks.append(
+                {"icao24": icao24, "callsign": callsign, "points": points, "count": len(points)}
+            )
+
+    if len(tracks) < 2:
+        return None
+
+    cpa = payload.get("atClosestLateral") or payload.get("atEventTime") or {}
+    return {
+        "tracks": tracks,
+        "cpa": {
+            "lat": payload.get("latitude"),
+            "lon": payload.get("longitude"),
+            "lateral_nm": cpa.get("trueLateralNm"),
+            "vertical_ft": cpa.get("trueVerticalFt"),
+        },
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Running the engine
 # --------------------------------------------------------------------------- #

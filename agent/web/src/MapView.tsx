@@ -52,6 +52,14 @@ type EventRow = {
   callsigns: string[] | null;
   source: string;
   provenance: string;
+  /** Producer metadata. Derived events carry the arithmetic; `engine` marks OpenARIA. */
+  metrics?: Record<string, unknown> | null;
+};
+
+type Encounter = {
+  event_id: number;
+  cpa: { lat: number; lon: number; lateral_nm: number | null; vertical_ft: number | null };
+  tracks: { icao24: string | null; callsign: string | null; count: number; points: [number, number, number][] }[];
 };
 
 type Aircraft = {
@@ -194,6 +202,18 @@ function niceType(value: string): string {
   return value.replace(/_/g, " ");
 }
 
+/** Which engine produced this event, if it says. Only OpenARIA events carry tracks. */
+function engineOf(row: EventRow): string | null {
+  const engine = (row.metrics as { engine?: unknown } | null | undefined)?.engine;
+  return typeof engine === "string" && engine ? engine : null;
+}
+
+/** A numeric metric, or null when the producer did not record one. */
+function numberOf(row: EventRow, key: string): number | null {
+  const value = (row.metrics as Record<string, unknown> | null | undefined)?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function when(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -256,6 +276,8 @@ export function MapView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<EventRow | null>(null);
+  // The tracks behind a selected encounter, when the producer kept them.
+  const [encounter, setEncounter] = useState<Encounter | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [showUpload, setShowUpload] = useState(false);
   const [live, setLive] = useState(false);
@@ -314,6 +336,21 @@ export function MapView({
         },
       });
       instance.addLayer({
+        id: "event-aria-ring",
+        type: "circle",
+        source: "events",
+        // OpenARIA events get a ring: they were computed over the whole track history,
+        // not read off a single poll, and the map should not make those look identical.
+        filter: ["==", ["get", "aria"], true],
+        paint: {
+          "circle-radius": 11,
+          "circle-color": "rgba(255,255,255,0)",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#b45309",
+          "circle-stroke-opacity": 0.9,
+        },
+      });
+      instance.addLayer({
         id: "event-dot",
         type: "circle",
         source: "events",
@@ -329,6 +366,41 @@ export function MapView({
         if (!feature) return;
         const id = Number(feature.properties?.id);
         setSelected((current) => eventsRef.current.find((row) => row.id === id) ?? current);
+      });
+
+      // The encounter a detector kept: two tracks that came close, drawn as evidence.
+      // Everything else on this map is a dot that asks to be believed.
+      instance.addSource("encounter", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      instance.addLayer({
+        id: "encounter-line-a",
+        type: "line",
+        source: "encounter",
+        filter: ["==", ["get", "slot"], 0],
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#1b2a4a", "line-width": 2, "line-opacity": 0.85 },
+      });
+      instance.addLayer({
+        id: "encounter-line-b",
+        type: "line",
+        source: "encounter",
+        filter: ["==", ["get", "slot"], 1],
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#c2410c", "line-width": 2, "line-opacity": 0.85 },
+      });
+      instance.addLayer({
+        id: "encounter-cpa",
+        type: "circle",
+        source: "encounter",
+        filter: ["==", ["get", "kind"], "cpa"],
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "rgba(255,255,255,0)",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#b45309",
+        },
       });
       instance.addSource("aircraft", {
         type: "geojson",
@@ -624,10 +696,76 @@ export function MapView({
       features: events.map((row) => ({
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [row.lon, row.lat] },
-        properties: { id: row.id, colour: SEVERITY_COLOUR[row.severity] ?? SEVERITY_COLOUR.unknown },
+        properties: {
+          id: row.id,
+          colour: SEVERITY_COLOUR[row.severity] ?? SEVERITY_COLOUR.unknown,
+          aria: Boolean((row.metrics as { engine?: string } | null | undefined)?.engine),
+        },
       })),
     });
   }, [events, ready]);
+
+  // Fetch the tracks behind a selected encounter. Only events whose producer kept them
+  // have any; anything else answers 404 and the panel simply shows no tracks.
+  useEffect(() => {
+    if (!selected) {
+      setEncounter(null);
+      return;
+    }
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch(`/api/events/${selected.id}/encounter`, { signal: controller.signal });
+        if (!response.ok) {
+          setEncounter(null);
+          return;
+        }
+        setEncounter((await response.json()) as Encounter);
+      } catch {
+        setEncounter(null);
+      }
+    })();
+    return () => controller.abort();
+  }, [selected]);
+
+  // Push the encounter tracks into the map: two lines and a marked closest approach.
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !ready) return;
+    const source = instance.getSource("encounter") as GeoJSONSource | undefined;
+    if (!source) return;
+
+    const features: GeoJSON.Feature[] = [];
+    if (encounter) {
+      encounter.tracks.forEach((track, index) => {
+        features.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: track.points.map(([lon, lat]) => [lon, lat]) },
+          properties: { slot: index, callsign: track.callsign, kind: "track" },
+        });
+      });
+      if (encounter.cpa?.lat != null && encounter.cpa?.lon != null) {
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [encounter.cpa.lon, encounter.cpa.lat] },
+          properties: { kind: "cpa" },
+        });
+      }
+    }
+    source.setData({ type: "FeatureCollection", features });
+
+    // Frame the encounter, or the two tracks sit behind the detail panel and the claim
+    // stays unverifiable in practice. flyTo rather than fitBounds: the panel covers the
+    // left of the map, so centring on the closest approach keeps the crossing visible.
+    if (encounter?.cpa?.lat != null && encounter.cpa?.lon != null) {
+      console.info("[encounter] centring on the closest approach", encounter.cpa.lateral_nm);
+      instance.flyTo({
+        center: [encounter.cpa.lon, encounter.cpa.lat],
+        zoom: 12.2,
+        duration: 800,
+      });
+    }
+  }, [encounter, ready]);
 
   const fitToEvents = useCallback(
     (animate = true) => {
@@ -998,7 +1136,14 @@ export function MapView({
                   onClick={() => focusEvent(row)}
                 >
                   <td className="mono">{when(row.event_time)}</td>
-                  <td>{niceType(row.event_type)}</td>
+                  <td>
+                    {niceType(row.event_type)}
+                    {engineOf(row) && (
+                      <span className="map-aria-tag" title="Detected by MITRE OpenARIA over the stored tracks">
+                        ARIA
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <span className="map-dot" style={{ background: SEVERITY_COLOUR[row.severity] }} />
                     {row.severity}
@@ -1071,8 +1216,33 @@ export function MapView({
               )}
               <dt>Source</dt>
               <dd>{selected.source}</dd>
+              {engineOf(selected) && (
+                <>
+                  <dt>Detected by</dt>
+                  <dd>
+                    OpenARIA
+                    {numberOf(selected, "score") !== null && ` · score ${numberOf(selected, "score")?.toFixed(2)}`}
+                  </dd>
+                  <dt>Closest approach</dt>
+                  <dd>
+                    {numberOf(selected, "lateral_nm")?.toFixed(2)} NM
+                    {numberOf(selected, "vertical_ft") !== null &&
+                      ` · ${Math.abs(numberOf(selected, "vertical_ft") as number).toFixed(0)} ft`}
+                    {typeof (selected.metrics as { conflict_angle?: string })?.conflict_angle === "string" &&
+                      ` · ${String((selected.metrics as { conflict_angle?: string }).conflict_angle).toLowerCase()}`}
+                  </dd>
+                </>
+              )}
               <dt>Provenance</dt>
               <dd className="map-provenance">{selected.provenance}</dd>
+              {encounter && (
+                <dd className="map-encounter-note" data-encounter-note>
+                  Both tracks are drawn on the map — A in navy
+                  {encounter.tracks[0]?.callsign ? ` (${encounter.tracks[0].callsign})` : ""}, B in orange
+                  {encounter.tracks[1]?.callsign ? ` (${encounter.tracks[1].callsign})` : ""} — with the
+                  closest approach ringed.
+                </dd>
+              )}
             </dl>
           </div>
         )}

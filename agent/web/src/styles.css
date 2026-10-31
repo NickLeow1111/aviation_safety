@@ -2552,6 +2552,17 @@ table.data tbody tr:hover {
 .map-detail dt { color: var(--muted); }
 .map-detail dd { margin: 0; color: var(--text); word-break: break-word; }
 .map-provenance { grid-column: 2; color: var(--muted) !important; font-size: 10.5px; line-height: 1.45; }
+/* Marks a track an engine computed over history, rather than a live reading. */
+.map-aria-tag {
+  display: inline-block; margin-left: 6px; padding: 1px 5px; border-radius: 4px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.04em; vertical-align: 1px;
+  color: #8a4b06; background: rgba(180, 83, 9, 0.12); border: 1px solid rgba(180, 83, 9, 0.28);
+}
+.map-encounter-note {
+  grid-column: 1 / -1; margin-top: 2px; padding-top: 6px;
+  border-top: 1px dashed rgba(180, 83, 9, 0.3);
+  color: var(--muted) !important; font-size: 10.5px; line-height: 1.45;
+}
 
 /* ---- upload ---------------------------------------------------------- */
 .upload-overlay {

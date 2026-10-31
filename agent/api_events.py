@@ -8,6 +8,7 @@ the write is worse than no preview at all.
 from __future__ import annotations
 
 import io
+import json
 from datetime import datetime
 from typing import Any, Sequence
 
@@ -15,6 +16,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 import ingest
+import openaria
 import store
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -196,6 +198,38 @@ async def import_upload(file: UploadFile = File(...)) -> dict[str, Any]:
         "duplicates_skipped": len(events) - written,
         "uploaded_total": uploaded_total,
         "filename": filename,
+    }
+
+
+@router.get("/{event_id}/encounter")
+def event_encounter(event_id: int) -> dict[str, Any]:
+    """The tracks behind a detected encounter, ready to draw.
+
+    Only a producer that kept its tracks gets this. OpenARIA stores the raw lines it
+    walked, so the map can show the two paths that came within 0.39 NM instead of a dot
+    that asks to be believed.
+    """
+    try:
+        with store.connect() as conn:
+            row = store.query_event(conn, event_id)
+    except Exception as exc:  # noqa: BLE001 - say what broke, not a stack trace
+        raise HTTPException(503, f"event store unavailable: {exc}") from exc
+
+    if row is None:
+        raise HTTPException(404, f"no event with id {event_id}")
+
+    raw = row.get("raw") or {}
+    payload = json.loads(raw) if isinstance(raw, str) else raw
+    encounter = openaria.encounter_tracks(payload or {})
+    if encounter is None:
+        raise HTTPException(404, "this event has no stored tracks to draw")
+
+    return {
+        "event_id": row["id"],
+        "event_time": _serialise(row)["event_time"],
+        "metrics": row.get("metrics") or {},
+        "provenance": row.get("provenance"),
+        **encounter,
     }
 
 

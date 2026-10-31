@@ -292,6 +292,23 @@ def query_events(conn: Any, **filters: Any) -> list[dict[str, Any]]:
         return [dict(zip(names, row)) for row in cur.fetchall()]
 
 
+def query_event(conn: Any, event_id: int) -> dict[str, Any] | None:
+    """One event by id, including the raw payload behind it.
+
+    The map uses this to draw the encounter OpenARIA found: the tracks it walked are
+    stored in `raw`, and they are the difference between a dot and a claim you can
+    check.
+    """
+    sql = f"SELECT {_COLUMNS}, raw FROM safety_event WHERE id = %s"
+    with conn.cursor() as cur:
+        cur.execute(sql, (int(event_id),))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        names = [d[0] for d in cur.description]
+        return dict(zip(names, row))
+
+
 def count_by(conn: Any, column: str, **filters: Any) -> dict[str, int]:
     """Counts grouped by one column — the legend needs both type and severity."""
     if column not in ("event_type", "severity", "source", "place_icao"):

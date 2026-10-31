@@ -31,8 +31,14 @@ def payload(**overrides):
         "atEventTime": {"trueLateralNm": 0.9, "trueVerticalFt": 250.0},
         "aircraft_0": {"callsign": "UNKNOWN", "trackId": "750526", "altitudeInFeet": 875, "speedInKnots": 95},
         "aircraft_1": {"callsign": "UNKNOWN", "trackId": "750495", "altitudeInFeet": 975, "speedInKnots": 83},
-        "track0": ["WSSS,SG,2026-10-31T03:51:55Z,750526,2.30900,102.24300,875,EXCEL05T"],
-        "track1": ["WSSS,SG,2026-10-31T03:51:55Z,750495,2.29300,102.23800,975,XL03"],
+        "track0": [
+            "WSSS,SG,2026-10-31T03:51:55Z,750526,2.30900,102.24300,875,EXCEL05T",
+            "WSSS,SG,2026-10-31T03:52:10Z,750526,2.30800,102.24400,900,EXCEL05T",
+        ],
+        "track1": [
+            "WSSS,SG,2026-10-31T03:51:55Z,750495,2.29300,102.23800,975,XL03",
+            "WSSS,SG,2026-10-31T03:52:10Z,750495,2.29400,102.23900,950,XL03",
+        ],
     }
     base.update(overrides)
     return base
@@ -181,3 +187,36 @@ def test_the_batch_pass_never_recreates_the_store():
     ]
     assert "apply_schema" not in calls, "the OpenARIA pass must not (re)create the event store"
     assert "_store_is_ready" in inspect.getsource(openaria), "it should check the table exists instead"
+
+
+# --------------------------------------------------------------------------- #
+# the encounter the map draws
+# --------------------------------------------------------------------------- #
+
+def test_encounter_tracks_turn_the_echoed_lines_back_into_positions():
+    """The map draws exactly the data OpenARIA walked, not a fresh look at the sky."""
+    encounter = openaria.encounter_tracks(payload())
+    assert encounter is not None
+    assert [t["callsign"] for t in encounter["tracks"]] == ["EXCEL05T", "XL03"]
+    assert encounter["tracks"][0]["points"][0] == [102.243, 2.309, 875.0], "lon, lat, altitude"
+    assert encounter["cpa"]["lateral_nm"] == 0.393
+
+
+def test_encounter_needs_two_drawable_tracks():
+    """Half an encounter is not evidence; better to draw nothing."""
+    assert openaria.encounter_tracks(payload(track1=[""])) is None
+    assert openaria.encounter_tracks({"track0": [], "track1": []}) is None
+
+
+def test_encounter_ignores_unparseable_lines():
+    encounter = openaria.encounter_tracks(
+        payload(
+            track0=[
+                "WSSS,SG,2026-10-31T03:51:55Z,750526,2.30900,102.24300,875,EXCEL05T",
+                "not,a,position",
+                "WSSS,SG,2026-10-31T03:52:10Z,750526,2.30800,102.24400,900,EXCEL05T",
+            ]
+        )
+    )
+    assert encounter is not None
+    assert encounter["tracks"][0]["count"] == 2
