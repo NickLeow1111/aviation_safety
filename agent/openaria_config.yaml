@@ -1,0 +1,53 @@
+# OpenARIA configuration for the stored-track batch pass.
+#
+# Started from MITRE's sampleCsvConfig.yaml and changed only where our data differs
+# from a radar feed: CSV input, no data tag requirement, and both output sinks kept
+# so every stored event arrives with the evidence that produced it.
+#
+# The thresholds below are OpenARIA's own, not ours. Ours apply afterwards, in
+# agent/openaria.py, when an encounter is graded against the 3 NM / 1,000 ft minima
+# the rest of the map already uses.
+---
+airborneConfig:
+  algorithmDef:
+    dataFormat: "csv"
+    hostId: "singapore-batch"
+    maxReportableScore: 30.0
+    # Our CSV carries an airspace label in its ignored columns, not NOP airspace
+    # polygons, so the airspace filter cannot mean anything here.
+    filterByAirspace: false
+    publishAirborneDynamics: true
+    publishTrackData: true
+    requiredDiverganceDistInNM: 0.5
+    onGroundSpeedInKnots: 80.0
+    # Both aircraft must have observed positions close enough in time to compare.
+    # 15 s sampling means a pair can straddle a poll, so this stays at MITRE's value.
+    requiredTimeOverlapInMs: 7500
+    formationFilters: "0.5,60,false"
+    requiredProximityInNM: 7.5
+    sizeOfTrackSmoothingCache: 500
+    trackSmoothingExpirationSec: 120
+    logDuplicateTracks: false
+    applySmoothing: true
+    # No radar data tag on ADS-B state vectors.
+    requireDataTag: false
+    logFileDirectory: "logs"
+    airborneDynamicsRadiusNm: 15.0
+    verbose: false
+
+  # Pairs are only compared when they are near each other at some point.
+  trackPairingDistanceInNM: 8.33
+  inMemorySortBufferSec: 600
+
+  outputConfig:
+    outputSinkSuppliers:
+      # One JSON file per event: the record we translate into safety_event.
+      - pluginClass: "org.mitre.openaria.airborne.config.AirborneFileSinkSupplier"
+        configOptions:
+          eventDirectory: "detectedEvents"
+      # A rendered picture of the encounter pair, kept as evidence next to the row.
+      - pluginClass: "org.mitre.openaria.airborne.config.MapSinkSupplier"
+        configOptions:
+          eventDirectory: "eventMaps"
+          useMapBox: false
+          mapWidthInNauticalMiles: 15.0

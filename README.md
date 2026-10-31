@@ -343,6 +343,43 @@ doc corpus is small), and any bulk historical ADS-B import — the free OpenSky
 API bills `/tracks` and `/flights` by day partition, so history is a separate
 decision, not a config flag.
 
+## OpenARIA: a second opinion on every stored track
+
+MITRE's [OpenARIA](https://github.com/mitre-public/open-aria) is the open-source
+edition of the FAA's ARIA analyser. It walks whole tracks, computes the closest
+point of approach for every pair of aircraft, scores the encounter and writes the
+arithmetic out as JSON. Our own detectors only ever judge the traffic in front of
+the map at one poll; OpenARIA sees the history those polls left behind.
+
+It is a **batch** pass, not a replacement for `detect.py`:
+
+- it finds airborne encounters only — unstable approaches, go-arounds and anything
+  on the surface stay with our own detectors;
+- its score is not a severity. `openaria.py` grades every encounter against the
+  3 NM / 1,000 ft minima the rest of the map already uses, so an operator can check
+  a row by hand;
+- rows go in through `store.insert_events`, the same door an upload uses, keyed on
+  `openaria:<uniqueId>` so re-running a window rewrites nothing.
+
+```bash
+# once: the jar is 49 MB and is not in git
+curl -L -o vendor/open-aria-uber.jar \
+  https://github.com/mitre-public/open-aria/releases/download/0.5.0/open-aria-uber.jar
+apt-get install -y openjdk-17-jre-headless     # Java 17+ is required
+
+cd agent
+OPENARIA_JAR=../vendor/open-aria-uber.jar python -m openaria --hours 24
+OPENARIA_JAR=../vendor/open-aria-uber.jar python -m openaria --hours 24 --dry-run
+```
+
+**What limits it is sampling, not software.** A first pass over 4,249 stored
+positions (311 aircraft, 5h44m) produced exactly one encounter, because our capture
+is browser-driven: the average aircraft has 19 fixes spread over 43 minutes, and
+OpenARIA needs contiguous tracks before it will compute a CPA. The 3,400 credit/day
+OpenSky budget caps a continuous poller at roughly one fix every 25 seconds. Until
+the capture is denser — or fed from a community ADS-B source — treat this pass as
+working plumbing over thin data, not as coverage.
+
 ## Local dev
 
 ```bash

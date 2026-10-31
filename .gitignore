@@ -13,6 +13,13 @@ __pycache__/
 *.pyc
 agent/.pytest_cache/
 
+# ---- OpenARIA -------------------------------------------------------------
+# The 49 MB uber-jar is a download, not source. Point OPENARIA_JAR at it, or drop
+# it in vendor/ — either way it does not belong in the repo.
+vendor/
+*.jar
+openaria-run/
+
 # ---- web / node -----------------------------------------------------------
 agent/web/node_modules/
 agent/web/tsconfig.tsbuildinfo
