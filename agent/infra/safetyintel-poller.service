@@ -1,0 +1,28 @@
+[Unit]
+Description=Safety Intelligence dense traffic poller
+Documentation=file:///root/aviation_safety/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+# The app can run without it; a crash loop must not take the map down with it.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/root/aviation_safety/agent
+# Budget-aware: the interval is recomputed from the credits left every poll, so this
+# spends the day's allowance evenly and stretches rather than going silent.
+ExecStart=/root/aviation_safety/agent/.venv/bin/python -m poller
+Restart=always
+RestartSec=30
+# It writes to Postgres as root over the local socket, like the app does.
+User=root
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=safetyintel-poller
+
+# A poller that dies every minute is worse than one that waits.
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target

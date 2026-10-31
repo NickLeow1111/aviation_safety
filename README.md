@@ -380,6 +380,39 @@ OpenSky budget caps a continuous poller at roughly one fix every 25 seconds. Unt
 the capture is denser — or fed from a community ADS-B source — treat this pass as
 working plumbing over thin data, not as coverage.
 
+## The dense poller
+
+`agent/poller.py` runs the capture whether or not anyone is looking at the map.
+
+```bash
+cd agent
+.venv/bin/python -m poller --once            # one poll, show what it saw
+.venv/bin/python -m poller --duration 300    # five minutes, then stop
+.venv/bin/python -m poller --dry-run         # fetch and report, store nothing
+cp ../agent/infra/safetyintel-poller.service /etc/systemd/system/ && \
+  systemctl enable --now safetyintel-poller  # run it for real
+```
+
+Two sources are merged by aircraft id:
+
+- **OpenSky** — broad coverage, ~10 s state vectors, one credit per 20-square-degree
+  box. The box is deliberately Singapore-and-approaches rather than the viewport,
+  because a bigger box costs the same credit.
+- **adsb.lol** — free, keyless, sub-second fixes, but sees roughly a third of the
+  traffic here and throttles by IP without advertising a limit (it answers 429 if you
+  burst; `community_adsb` spaces requests and backs off). Its data is **ODbL**: any
+  public display needs attribution.
+
+The cadence is recomputed on every poll from the credits actually left and the hours
+actually remaining, so the pass spreads its allowance across the day instead of going
+blind by lunchtime. Measured over a 3.5-minute run: 11 polls, ~19 s apart, 62–77
+fixes stored per poll, 1 credit each. Per-aircraft gap in the stored tracks dropped
+from a 67.8 s p90 (browser-driven) to **19.7 s median / 25.2 s p90**.
+
+It also propagates manoeuvres: go-arounds and unstable approaches detected on the
+stored tracks are promoted into `safety_event` through the same door as everything
+else, so the record grows when nobody is watching.
+
 ## Local dev
 
 ```bash
