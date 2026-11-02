@@ -3035,3 +3035,14 @@ table.data tbody tr:hover {
   .ops-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ops-columns { grid-template-columns: 1fr; }
 }
+
+/* ---- sortable event table headers ------------------------------------ */
+.map-sort {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+  cursor: pointer;
+}
+.map-sort:hover { color: var(--text); }
+.map-sort.is-on { color: var(--navy); font-weight: 700; }
+.map-sort-arrow { font-size: 8px; opacity: .75; }

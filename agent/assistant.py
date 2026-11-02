@@ -27,6 +27,7 @@ from typing import Any, AsyncIterator, Iterable
 
 import detect
 import documents
+import event_query
 import live
 import rulebook
 import store
@@ -53,7 +54,12 @@ quote them exactly; never recompute or approximate them.
 state what would be needed. Do not pad, do not speculate, do not use general \
 aviation knowledge as a substitute for the data.
 5. Be concise: the answer first, then the supporting detail with citations.
-6. If a block says the system already applied a settings change, that change has happened — state it as applied ("separation is now 3 NM") and use the new numbers. You are not asking permission; the server already wrote them.
+6. When the question asks you to extract or list events, answer with a markdown table using
+   exactly the rows in the Event database block — one row per event, no invented rows, no
+   dropped rows. State the total ("12 of 12 shown") next to the table. If the block says
+   zero matched, say zero and repeat the filters that were applied, so the user can see the
+   question was understood even though nothing came back.
+7. If a block says the system already applied a settings change, that change has happened — state it as applied ("separation is now 3 NM") and use the new numbers. You are not asking permission; the server already wrote them.
 """
 
 
@@ -112,34 +118,17 @@ def _event_facts(conn: Any, question: str) -> tuple[str, list[dict[str, Any]]]:
         "By place: " + ", ".join(f"{name} {count}" for name, count in by_place) + ".",
     ]
 
-    # Pull the rows a question is plainly about, so the answer can quote specifics.
-    filters: dict[str, Any] = {}
-    codes = re.findall(r"\b([A-Z]{4})\b", question)
-    known_types = [row[0] for row in by_type]
-    for event_type in known_types:
-        if event_type.replace("_", " ") in question.lower() or event_type in question.lower():
-            filters["types"] = [event_type]
-            break
-
-    sample: list[dict[str, Any]] = []
+    # The rows the question is actually about. Type, place and window are read out of the
+    # question and applied as SQL filters, so "go-arounds last week at WSSS" is a query
+    # rather than the newest fifteen rows of anything at all.
     try:
-        with_place = None
-        if codes:
-            with_place = codes[0]
-            sample = store.query_events(conn, place_icao=with_place, limit=15)
-        if not sample:
-            sample = store.query_events(conn, limit=15, **filters)
-    except Exception:  # noqa: BLE001 - a sample is a bonus, not the contract
-        sample = []
+        matched, sample, query = event_query.facts(conn, question, limit=60)
+        lines.append("")
+        lines.append(matched)
+    except Exception as exc:  # noqa: BLE001 - a hint, not the contract
+        sample, query = [], None
+        lines.append(f"(the event query could not be built: {exc})")
 
-    if sample:
-        lines.append(f"Matching events closest to the question ({len(sample)}):")
-        for row in sample:
-            lines.append(
-                f"  {row['event_time']:%Y-%m-%d %H:%M}Z · {row['event_type']} · {row['severity']} · "
-                f"{row['place_icao'] or 'n/a'} ({row['lat']:.4f},{row['lon']:.4f}) · "
-                f"source {row['source']}"
-            )
     return "\n".join(lines), sample
 
 

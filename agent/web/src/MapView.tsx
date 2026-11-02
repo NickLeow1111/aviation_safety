@@ -16,6 +16,7 @@ import { UploadPanel } from "./UploadPanel";
 import { Chat } from "./Chat";
 import { useAssistant } from "./useAssistant";
 import type { RulesSnapshot } from "./types";
+import { airlineOf, airlineSortKey } from "./airlines";
 
 /** The map view: where safety events actually happened.
  *
@@ -277,6 +278,11 @@ export function MapView({
   const map = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   const [events, setEvents] = useState<EventRow[]>([]);
+  // The table is the record of what the filters caught; sorting is how an analyst reads it.
+  const [sort, setSort] = useState<{ key: "when" | "type" | "severity" | "place" | "airline" | "source"; dir: "asc" | "desc" }>({
+    key: "when",
+    dir: "desc",
+  });
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [severityCounts, setSeverityCounts] = useState<Record<string, number>>({});
   const [summary, setSummary] = useState("");
@@ -494,6 +500,34 @@ export function MapView({
 
   const eventsRef = useRef<EventRow[]>([]);
   eventsRef.current = events;
+
+  const SEVERITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, unknown: 4 };
+
+  const sortedEvents = useMemo(() => {
+    const value = (row: EventRow): string | number => {
+      switch (sort.key) {
+        case "type":
+          return row.event_type;
+        case "severity":
+          return SEVERITY_RANK[row.severity] ?? 9;
+        case "place":
+          return row.place_icao ?? "~";
+        case "airline":
+          return airlineSortKey(row.callsigns);
+        case "source":
+          return row.source;
+        default:
+          return row.event_time;
+      }
+    };
+    const direction = sort.dir === "asc" ? 1 : -1;
+    return [...events].sort((a, b) => {
+      const left = value(a);
+      const right = value(b);
+      if (typeof left === "number" && typeof right === "number") return (left - right) * direction;
+      return String(left).localeCompare(String(right)) * direction;
+    });
+  }, [events, sort]);
 
   // ---- data --------------------------------------------------------------
   const load = useCallback(async () => {
@@ -808,6 +842,28 @@ export function MapView({
     [events],
   );
 
+  // A header that sorts: first click on a column sets its natural direction (newest first
+  // for time, A–Z elsewhere), a second click reverses it.
+  const sortableHeader = (key: "when" | "type" | "severity" | "place" | "airline" | "source", label: string) => (
+    <th key={key} aria-sort={sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        className={`map-sort ${sort.key === key ? "is-on" : ""}`}
+        data-sort={key}
+        onClick={() =>
+          setSort((current) =>
+            current.key === key
+              ? { key, dir: current.dir === "asc" ? "desc" : "asc" }
+              : { key, dir: key === "when" ? "desc" : "asc" },
+          )
+        }
+      >
+        {label}
+        <span className="map-sort-arrow">{sort.key === key ? (sort.dir === "asc" ? "▲" : "▼") : ""}</span>
+      </button>
+    </th>
+  );
+
   // Fit once the first batch of events arrives.
   const fittedOnce = useRef(false);
   useEffect(() => {
@@ -1087,15 +1143,16 @@ export function MapView({
           <table className="map-table" data-event-table>
             <thead>
               <tr>
-                <th>When (UTC)</th>
-                <th>Type</th>
-                <th>Severity</th>
-                <th>Place</th>
-                <th>Source</th>
+                {sortableHeader("when", "When (UTC)")}
+                {sortableHeader("type", "Type")}
+                {sortableHeader("severity", "Severity")}
+                {sortableHeader("place", "Place")}
+                {sortableHeader("airline", "Airline")}
+                {sortableHeader("source", "Source")}
               </tr>
             </thead>
             <tbody>
-              {events.slice(0, 200).map((row) => (
+              {sortedEvents.slice(0, 200).map((row) => (
                 <tr
                   key={row.id}
                   data-event-row={row.id}
@@ -1116,12 +1173,23 @@ export function MapView({
                     {row.severity}
                   </td>
                   <td>{row.place_icao ?? "—"}</td>
+                  <td>
+                    {(() => {
+                      const airline = airlineOf(row.callsigns);
+                      if (!airline) return "—";
+                      return (
+                        <span title={`${airline.name}${(row.callsigns ?? []).length ? ` · ${(row.callsigns ?? []).join(", ")}` : ""}`}>
+                          {airline.known ? airline.name : airline.code}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td>{row.source}</td>
                 </tr>
               ))}
               {!events.length && !loading && (
                 <tr>
-                  <td colSpan={5} className="map-empty">
+                  <td colSpan={6} className="map-empty">
                     Nothing matches these filters.
                   </td>
                 </tr>
