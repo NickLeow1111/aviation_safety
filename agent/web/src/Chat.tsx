@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { OpsBoard } from "./OpsBoard";
 import { InsightsPanel, loadPinned, savePinned, type PinnedQuery } from "./InsightsPanel";
 import type { RulesSnapshot } from "./types";
 import type { ChatMessage } from "./types";
@@ -20,9 +19,7 @@ export function Chat({
   onSend,
   ready,
   liveGrounding = false,
-  suggestions,
   onOpenReplay,
-  rules = null,
 }: {
   messages: ChatMessage[];
   traces?: unknown[];
@@ -31,16 +28,14 @@ export function Chat({
   ready: "checking" | "ready" | "error";
   readyMsg?: string;
   liveGrounding?: boolean;
-  suggestions: string[];
   /** A detection on the ops board was clicked: show it on the map. */
   onSelectEvent?: (id: number) => void;
-  /** Rule results from the map, shown on the ops board. */
+  /** Rule results from the map. Kept in the prop list while the board finds a new home. */
   rules?: RulesSnapshot | null;
   /** Hand an event to the replay pane. */
   onOpenReplay?: (id: number) => void;
 }) {
   const [input, setInput] = useState("");
-  const [caseId, setCaseId] = useState<number | null>(null);
   const [pinned, setPinned] = useState<PinnedQuery[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -78,10 +73,6 @@ export function Chat({
 
   return (
     <aside className="chat-shell chat-shell--minimal analysis-layout">
-      <div className="analysis-rail">
-        <OpsBoard onSelectEvent={(id) => setCaseId(id)} rules={rules} />
-      </div>
-
       <div className="analysis-canvas">
       <header className="chat-top">
         <span className="chat-title">Analysis</span>
@@ -93,19 +84,12 @@ export function Chat({
         {ready === "error" && <span className="chat-warn">offline</span>}
       </header>
 
-      <InsightsPanel caseId={caseId} onAsk={onSend} onOpenReplay={onOpenReplay} pinned={pinned} onUnpin={unpin} />
+      <InsightsPanel caseId={null} onAsk={onSend} onOpenReplay={onOpenReplay} pinned={pinned} onUnpin={unpin} />
 
       <div className="messages messages--minimal" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="chat-empty">
             <p>Answers come from the files you uploaded and the event store, with citations.</p>
-            <div className="chat-starters">
-              {suggestions.slice(0, 3).map((suggestion) => (
-                <button key={suggestion} type="button" onClick={() => onSend(suggestion)} disabled={busy}>
-                  {suggestion}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 

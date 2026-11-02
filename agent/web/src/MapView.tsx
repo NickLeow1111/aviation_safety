@@ -1264,11 +1264,6 @@ export function MapView({
             onSend={(text) => void assistant.send(text)}
             ready="ready"
             liveGrounding={live}
-            suggestions={[
-              "Any unusual flight paths right now?",
-              "Which aircraft are inside the separation minimum?",
-              "What is the fastest aircraft in view?",
-            ]}
           />
         </aside>
       ) : (

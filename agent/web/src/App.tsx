@@ -15,16 +15,6 @@ import type { ChartArtifact, ChatMessage, ChatSession, RulesSnapshot, ToolTrace 
 type ReadyState = "checking" | "ready" | "error";
 type Theme = "light" | "dark";
 
-const STARTER_PROMPTS = [
-  "Show me the runway incursion dashboard",
-  "Analyze recent bird strike",
-  "Audit aircraft maintenance organisation",
-  "Show personnel licences summary",
-  "Aircraft registry overview",
-  "Aerodrome incidents at Changi",
-  "ATC incident analysis",
-  "Cross-domain safety overview",
-];
 
 const HISTORY_KEY = "sib-chat-history";
 const SETTINGS_KEY = "sib-settings";
@@ -301,7 +291,6 @@ export default function App() {
           onSend={send}
           ready={ready}
           readyMsg={readyMsg}
-          suggestions={STARTER_PROMPTS}
           onSelectEvent={(id) => {
             setPendingEvent(id);
             setView("map");

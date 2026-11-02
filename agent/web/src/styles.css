@@ -3140,7 +3140,7 @@ table.data tbody tr:hover {
 /* ---- analysis layout: the board is a rail, the canvas does the work ------ */
 .analysis-layout {
   display: grid;
-  grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   height: calc(100vh - 56px);
   align-items: stretch;
