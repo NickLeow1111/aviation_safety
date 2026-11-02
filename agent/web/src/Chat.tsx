@@ -73,7 +73,11 @@ export function Chat({
 
   return (
     <aside className="chat-shell chat-shell--minimal analysis-layout">
-      <div className="analysis-canvas">
+      <main className="analysis-main">
+      <InsightsPanel caseId={null} onAsk={onSend} onOpenReplay={onOpenReplay} pinned={pinned} onUnpin={unpin} />
+      </main>
+
+      <div className="chat-side">
       <header className="chat-top">
         <span className="chat-title">Analysis</span>
         {liveGrounding && (
@@ -83,8 +87,6 @@ export function Chat({
         )}
         {ready === "error" && <span className="chat-warn">offline</span>}
       </header>
-
-      <InsightsPanel caseId={null} onAsk={onSend} onOpenReplay={onOpenReplay} pinned={pinned} onUnpin={unpin} />
 
       <div className="messages messages--minimal" ref={scrollRef}>
         {messages.length === 0 && (

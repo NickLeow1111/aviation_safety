@@ -3140,11 +3140,19 @@ table.data tbody tr:hover {
 /* ---- analysis layout: the board is a rail, the canvas does the work ------ */
 .analysis-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  /* The canvas gets the width; the assistant becomes a side panel so both are visible
+     at once instead of the thread pushing the analysis off screen. */
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
   gap: 0;
   height: calc(100vh - 56px);
   align-items: stretch;
 }
+.analysis-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.chat-side {
+  display: flex; flex-direction: column; min-height: 0;
+  border-left: 1px solid var(--border); background: var(--panel);
+}
+.analysis-main .insights { flex: 1; max-height: none; }
 .analysis-rail {
   border-right: 1px solid var(--border);
   overflow-y: auto;
@@ -3259,3 +3267,20 @@ table.data tbody tr:hover {
   border: 0; border-bottom: 1px solid var(--border); background: none; cursor: pointer; color: var(--text);
 }
 .case-picker-row:hover { background: var(--panel-soft); }
+
+
+/* ---- operations drawer on the map --------------------------------------- */
+.map-drawer {
+  position: absolute; top: 12px; right: 12px; bottom: 12px; width: 400px;
+  z-index: 5; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 12px; box-shadow: 0 12px 32px rgba(15, 23, 42, .18); overflow: hidden;
+}
+.map-drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  font-size: 12px; font-weight: 600; color: var(--navy);
+}
+.map-drawer-body { overflow-y: auto; min-height: 0; }
+.map-drawer-body .ops { border: 0; border-radius: 0; }
+.map-btn.is-on { background: var(--navy); color: #fff; border-color: var(--navy); }

@@ -15,6 +15,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { planeImage } from "./planeIcon";
 import { UploadPanel } from "./UploadPanel";
 import { Chat } from "./Chat";
+import { OpsBoard } from "./OpsBoard";
 import { useAssistant } from "./useAssistant";
 import type { RulesSnapshot } from "./types";
 import { airlineOf, airlineSortKey } from "./airlines";
@@ -267,6 +268,10 @@ export function MapView({
   const [predicted, setPredicted] = useState<Predicted | null>(null);
   const [motion, setMotion] = useState<Motion | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(true);
+  // The operations board pushed rule results out of the analysis tab and needed a home on
+  // the screen where the rules actually run. It lives here, closed until asked for.
+  const [opsOpen, setOpsOpen] = useState(false);
+  const [rulesSnapshot, setRulesSnapshot] = useState<RulesSnapshot | null>(null);
   const [aircraft, setAircraft] = useState<Aircraft | null>(null);
 
   // ---- map lifecycle -----------------------------------------------------
@@ -538,12 +543,12 @@ export function MapView({
   onRulesChangeRef.current = onRulesChange;
   useEffect(() => {
     const emit = onRulesChangeRef.current;
-    if (!emit) return;
     if (!flagged && !predicted && !motion && !unusual) {
-      emit(null);
+      setRulesSnapshot(null);
+      emit?.(null);
       return;
     }
-    emit({
+    const snapshot: RulesSnapshot = {
       at: new Date().toISOString(),
       summary: flagged?.summary ?? "",
       conflicts: flagged?.conflicts ?? [],
@@ -551,7 +556,9 @@ export function MapView({
       predicted: predicted?.conflicts ?? [],
       motion: motion?.events ?? [],
       unusual: unusual?.flags ?? [],
-    });
+    };
+    setRulesSnapshot(snapshot);
+    emit?.(snapshot);
   }, [flagged, predicted, motion, unusual]);
 
   // The panel asks about what is on screen: current bounds, and only when the live
@@ -880,6 +887,14 @@ export function MapView({
         <div className="map-actions">
           <button className="map-btn" onClick={() => fitToEvents()} disabled={!events.length}>
             Fit to events
+          </button>
+          <button
+            className={`map-btn map-btn--ghost ${opsOpen ? "is-on" : ""}`}
+            data-ops-toggle
+            onClick={() => setOpsOpen((value) => !value)}
+            title="The operations board and the last rule pass"
+          >
+            Operations
           </button>
           <button className="map-btn map-btn--ghost" onClick={() => setShowUpload(true)}>
             Upload file
@@ -1244,6 +1259,26 @@ export function MapView({
           </div>
         )}
       </div>
+
+      {opsOpen && (
+        <aside className="map-drawer" data-ops-drawer>
+          <header className="map-drawer-head">
+            <span>Operations</span>
+            <button className="map-assistant-close" onClick={() => setOpsOpen(false)} aria-label="Hide the operations board">
+              ×
+            </button>
+          </header>
+          <div className="map-drawer-body">
+            <OpsBoard
+              rules={rulesSnapshot}
+              onSelectEvent={(id) => {
+                const row = eventsRef.current.find((item) => item.id === id);
+                if (row) focusEvent(row);
+              }}
+            />
+          </div>
+        </aside>
+      )}
 
       {assistantOpen ? (
         <aside className="map-assistant" data-map-assistant>
