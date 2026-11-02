@@ -1,21 +1,21 @@
 export function NavBar({
-  onNewChat,
+  onNewAnalysis,
   onHistory,
   onSettings,
   historyCount,
   user,
   onLogout,
-  view = "chat",
+  view = "map",
   onViewChange,
 }: {
-  onNewChat: () => void;
+  onNewAnalysis: () => void;
   onHistory: () => void;
   onSettings: () => void;
   historyCount: number;
   user?: { name: string; role: string } | null;
   onLogout?: () => void;
-  view?: "chat" | "map";
-  onViewChange?: (view: "chat" | "map") => void;
+  view?: "map" | "replay" | "analysis";
+  onViewChange?: (view: "map" | "replay" | "analysis") => void;
 }) {
   return (
     <nav className="navbar">
@@ -42,23 +42,38 @@ export function NavBar({
           Map
         </button>
         <button
-          className={`navbar-btn ${view === "chat" ? "navbar-btn--active" : ""}`}
-          data-nav-chat
-          onClick={() => onViewChange?.("chat")}
-          title="Back to the conversation"
+          className={`navbar-btn ${view === "replay" ? "navbar-btn--active" : ""}`}
+          data-nav-replay
+          onClick={() => onViewChange?.("replay")}
+          title="Replay the tracks behind an event"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            <polygon points="10 8 16 12 10 16 10 8" />
           </svg>
-          Chat
+          Replay
         </button>
-        <button className="navbar-btn" onClick={onNewChat} title="Start a new conversation">
+        <button
+          className={`navbar-btn ${view === "analysis" ? "navbar-btn--active" : ""}`}
+          data-nav-analysis
+          onClick={() => onViewChange?.("analysis")}
+          title="Analysis: the operations board and the assistant"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+          Analysis
+        </button>
+        <button className="navbar-btn" data-nav-new-analysis onClick={onNewAnalysis} title="Start a new analysis">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 5v14" /><path d="M5 12h14" />
           </svg>
-          New Chat
+          + Analysis
         </button>
-        <button className="navbar-btn" onClick={onHistory} title="View chat history">
+        <button className="navbar-btn" onClick={onHistory} title="View past analyses">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
           </svg>
@@ -69,7 +84,7 @@ export function NavBar({
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
-          Chat Settings
+          Settings
         </button>
         {user && (
           <div className="navbar-user">

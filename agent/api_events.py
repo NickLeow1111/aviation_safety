@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Sequence
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
@@ -201,6 +201,100 @@ async def import_upload(file: UploadFile = File(...)) -> dict[str, Any]:
         "duplicates_skipped": len(events) - written,
         "uploaded_total": uploaded_total,
         "filename": filename,
+    }
+
+
+@router.get("/{event_id}/replay")
+def event_replay(
+    event_id: int,
+    before_s: int = 150,
+    after_s: int = 150,
+    max_points: int = 900,
+) -> dict[str, Any]:
+    """The stored positions either side of an event, ready to step through.
+
+    The map draws an event as a dot, which asks to be believed. This hands back the
+    minutes around it — one series per aircraft — so the approach can be replayed and
+    the separation watched closing and opening again.
+
+    Nothing is interpolated here. The samples are the ones the poller stored, with the
+    gaps left in; the client is responsible for saying where it is guessing between
+    them.
+    """
+    before_s = max(10, min(int(before_s), 1800))
+    after_s = max(10, min(int(after_s), 1800))
+
+    try:
+        with store.connect() as conn:
+            row = store.query_event(conn, event_id)
+            if row is None:
+                raise HTTPException(404, f"no event with id {event_id}")
+
+            centre = row["event_time"]
+            icaos = [str(code).lower() for code in (row.get("icao24") or []) if code]
+            if not icaos:
+                raise HTTPException(404, "this event names no aircraft, so there is nothing to replay")
+
+            cursor = conn.cursor()
+            aircraft: list[dict[str, Any]] = []
+            for code in icaos:
+                cursor.execute(
+                    """
+                    SELECT observed_at, lat, lon, altitude_ft, ground_speed_kt,
+                           track_deg, vertical_rate_fpm, on_ground, callsign
+                      FROM aircraft_track
+                     WHERE icao24 = %s
+                       AND observed_at BETWEEN %s AND %s
+                     ORDER BY observed_at
+                    """,
+                    (code, centre - timedelta(seconds=before_s), centre + timedelta(seconds=after_s)),
+                )
+                samples = cursor.fetchall()
+
+                # A long window on a chatty aircraft can exceed the cap; thin it evenly so
+                # the shape survives instead of keeping only the first page of it.
+                if len(samples) > max_points:
+                    stride = len(samples) / float(max_points)
+                    samples = [samples[int(i * stride)] for i in range(max_points)]
+
+                callsign = next((s[8] for s in samples if s[8]), None)
+                aircraft.append(
+                    {
+                        "icao24": code,
+                        "callsign": callsign,
+                        "samples": [
+                            {
+                                "t": series[0].isoformat(),
+                                "lat": series[1],
+                                "lon": series[2],
+                                "altitude_ft": series[3],
+                                "ground_speed_kt": series[4],
+                                "track_deg": series[5],
+                                "vertical_rate_fpm": series[6],
+                                "on_ground": series[7],
+                            }
+                            for series in samples
+                        ],
+                    }
+                )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - say what broke, not a stack trace
+        raise HTTPException(503, f"event store unavailable: {exc}") from exc
+
+    return {
+        "event_id": row["id"],
+        "event_time": _serialise(row)["event_time"],
+        "event_type": row["event_type"],
+        "severity": row["severity"],
+        "place_icao": row.get("place_icao"),
+        "callsigns": row.get("callsigns"),
+        "lat": row.get("lat"),
+        "lon": row.get("lon"),
+        "metrics": row.get("metrics") or {},
+        "provenance": row.get("provenance"),
+        "window": {"before_s": before_s, "after_s": after_s},
+        "aircraft": aircraft,
     }
 
 

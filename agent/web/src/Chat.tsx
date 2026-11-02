@@ -53,7 +53,7 @@ export function Chat({
   return (
     <aside className="chat-shell chat-shell--minimal">
       <header className="chat-top">
-        <span className="chat-title">Safety assistant</span>
+        <span className="chat-title">Analysis</span>
         {liveGrounding && (
           <span className="chat-live" data-chat-live>
             <span className="chat-live-dot" /> live traffic

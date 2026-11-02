@@ -8,6 +8,7 @@ import { LoginPage } from "./LoginPage";
 // Split out: MapLibre is most of the bundle, and nobody needs it to read a chat
 // message. The map chunk loads the first time somebody opens the map.
 const MapView = lazy(() => import("./MapView").then((module) => ({ default: module.MapView })));
+const ReplayView = lazy(() => import("./ReplayView").then((module) => ({ default: module.ReplayView })));
 import { streamChat } from "./sse";
 import type { ChartArtifact, ChatMessage, ChatSession, RulesSnapshot, ToolTrace } from "./types";
 
@@ -70,7 +71,7 @@ function saveSettings(settings: { customPrompt: string; theme: Theme }) {
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [view, setView] = useState<"chat" | "map">("chat");
+  const [view, setView] = useState<"map" | "replay" | "analysis">("map");
   // Set when the ops board sends the user to the map for one specific detection.
   const [pendingEvent, setPendingEvent] = useState<number | null>(null);
   const [liveState, setLiveState] = useState<{ enabled: boolean; bbox: number[] | null }>({
@@ -197,7 +198,7 @@ export default function App() {
       const preview = lastMsg?.role === "bot" ? lastMsg.text.slice(0, 100) : "";
       const session: ChatSession = {
         id: sessionId.current,
-        title: firstUserMsg?.text.slice(0, 60) || "New Chat",
+        title: firstUserMsg?.text.slice(0, 60) || "New analysis",
         timestamp: Date.now(),
         messageCount: messages.filter((m) => m.role === "user" || m.role === "bot").length,
         preview,
@@ -252,7 +253,7 @@ export default function App() {
   return loggedIn ? (
     <div className="app-view">
       <NavBar
-        onNewChat={handleNewChat}
+        onNewAnalysis={handleNewChat}
         onHistory={() => { setShowHistory((v) => !v); setShowSettings(false); }}
         onSettings={() => { setShowSettings((v) => !v); setShowHistory(false); }}
         historyCount={chatHistory.length}
@@ -284,6 +285,10 @@ export default function App() {
       {view === "map" ? (
         <Suspense fallback={<div className="map-loading">Loading the map…</div>}>
           <MapView onLiveChange={setLiveState} onRulesChange={setRulesSnapshot} focusEventId={pendingEvent} />
+        </Suspense>
+      ) : view === "replay" ? (
+        <Suspense fallback={<div className="map-loading">Loading the replay…</div>}>
+          <ReplayView focusEventId={pendingEvent} />
         </Suspense>
       ) : (
       <div className={`app-shell ${charts.length === 0 ? "app-shell--solo" : ""}`}>
