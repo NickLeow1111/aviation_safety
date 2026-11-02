@@ -15,6 +15,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { UploadPanel } from "./UploadPanel";
 import { Chat } from "./Chat";
 import { useAssistant } from "./useAssistant";
+import type { RulesSnapshot } from "./types";
 
 /** The map view: where safety events actually happened.
  *
@@ -263,9 +264,12 @@ function planeImage(colour: string, outline = "#ffffff"): ImageData {
 
 export function MapView({
   onLiveChange,
+  onRulesChange,
   focusEventId = null,
 }: {
   onLiveChange?: (state: { enabled: boolean; bbox: number[] | null }) => void;
+  /** Rule results for the Operations board; the map no longer prints them itself. */
+  onRulesChange?: (snapshot: RulesSnapshot | null) => void;
   /** An event the ops board asked to see; the map opens it once the rows arrive. */
   focusEventId?: number | null;
 } = {}) {
@@ -530,6 +534,29 @@ export function MapView({
   liveStatusRef.current = liveStatus;
   const onLiveChangeRef = useRef(onLiveChange);
   onLiveChangeRef.current = onLiveChange;
+
+  // One snapshot per change, pushed up to whoever is showing the board. The map stopped
+  // printing rule results: the values are still computed here because this is where the
+  // live pass lands.
+  const onRulesChangeRef = useRef(onRulesChange);
+  onRulesChangeRef.current = onRulesChange;
+  useEffect(() => {
+    const emit = onRulesChangeRef.current;
+    if (!emit) return;
+    if (!flagged && !predicted && !motion && !unusual) {
+      emit(null);
+      return;
+    }
+    emit({
+      at: new Date().toISOString(),
+      summary: flagged?.summary ?? "",
+      conflicts: flagged?.conflicts ?? [],
+      overspeed: flagged?.overspeed ?? [],
+      predicted: predicted?.conflicts ?? [],
+      motion: motion?.events ?? [],
+      unusual: unusual?.flags ?? [],
+    });
+  }, [flagged, predicted, motion, unusual]);
 
   // The panel asks about what is on screen: current bounds, and only when the live
   // layer is actually on — otherwise each question would spend OpenSky credits.
@@ -970,77 +997,6 @@ export function MapView({
               {rulesBusy ? "Applying…" : "Apply rules"}
             </button>
 
-            {flagged && (
-              <p className="map-live-status" data-detection-summary>
-                {flagged.summary}
-              </p>
-            )}
-            {flagged && flagged.conflicts.length > 0 && (
-              <ul className="detection-list" data-detection-conflicts>
-                {flagged.conflicts.slice(0, 5).map((item) => (
-                  <li key={`${item.icao24_a}-${item.icao24_b}`} className="is-conflict">
-                    <strong>
-                      {item.a} / {item.b}
-                    </strong>
-                    <span>
-                      {item.separation_nm} NM
-                      {item.vertical_ft !== null && item.vertical_ft !== undefined
-                        ? ` · ${item.vertical_ft} ft`
-                        : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {predicted && predicted.conflicts.length > 0 && (
-              <ul className="detection-list" data-predicted-list>
-                {predicted.conflicts.slice(0, 4).map((item) => (
-                  <li key={`${item.a}-${item.b}`} className="is-predicted">
-                    <strong>
-                      {item.a} / {item.b}
-                    </strong>
-                    <span>
-                      {item.predicted_nm} NM in {item.time_to_cpa_s}s (now {item.current_nm})
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {motion && motion.events.length > 0 && (
-              <ul className="detection-list" data-motion-list>
-                {motion.events.slice(0, 4).map((item) => (
-                  <li key={`${item.callsign}-${item.kind}`} className="is-motion">
-                    <strong>{item.callsign}</strong>
-                    <span>
-                      {item.kind.replace(/_/g, " ")} — {item.detail}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {unusual && unusual.flags.length > 0 && (
-              <ul className="detection-list" data-unusual-list>
-                {unusual.flags.slice(0, 5).map((item) => (
-                  <li key={`${item.icao24}-${item.kind}`} className="is-unusual">
-                    <strong>{item.callsign}</strong>
-                    <span>{item.detail}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {flagged && flagged.overspeed.length > 0 && (
-              <ul className="detection-list" data-detection-overspeed>
-                {flagged.overspeed.slice(0, 5).map((item) => (
-                  <li key={item.icao24} className="is-overspeed">
-                    <strong>{item.callsign}</strong>
-                    <span>
-                      {item.ground_speed_kt} kt
-                      {item.limit_kt ? ` (limit ${item.limit_kt})` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </section>
         )}
 
@@ -1102,7 +1058,7 @@ export function MapView({
         <section className="map-block">
           <h3>Source</h3>
           <div className="map-chips">
-            {[null, "report", "upload", "derived"].map((value) => (
+            {[null, "report", "upload", "derived", "aria"].map((value) => (
               <button
                 key={value ?? "all"}
                 data-source-chip={value ?? "all"}

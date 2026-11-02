@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { RulesSnapshot } from "./types";
 
 /** The operations board: what is being detected, where, and in what.
  *
@@ -117,7 +118,14 @@ function age(seconds: number | null): string {
   return `${Math.round(seconds / 3600)} h ago`;
 }
 
-export function OpsBoard({ onSelectEvent }: { onSelectEvent?: (id: number) => void }) {
+export function OpsBoard({
+  onSelectEvent,
+  rules = null,
+}: {
+  onSelectEvent?: (id: number) => void;
+  /** What the map's rule controls found on the last live pass. */
+  rules?: RulesSnapshot | null;
+}) {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
@@ -167,9 +175,8 @@ export function OpsBoard({ onSelectEvent }: { onSelectEvent?: (id: number) => vo
     );
   }
 
-  const { traffic, detections, places, types, recent, series, detectors, agreement, coverage, phases } = board;
+  const { traffic, detections, places, types, series, detectors, agreement, coverage, phases } = board;
   const peak = Math.max(1, ...series.map((point) => point.count));
-  const newest = recent[0];
   const stale = traffic.last_fix_age_seconds !== null && traffic.last_fix_age_seconds > 300;
 
   return (
@@ -226,36 +233,103 @@ export function OpsBoard({ onSelectEvent }: { onSelectEvent?: (id: number) => vo
             ))}
           </div>
 
-          <div className="ops-section">
+          {/* The rule results live here now.
+              They used to render under the "Apply rules" button on the map, in the middle
+              of the controls that produced them. The board is where a question about the
+              airspace is answered, so the answer belongs here and the controls stay put. */}
+          <div className="ops-section" data-ops-rules>
             <div className="ops-section-head">
-              <span>Newest detections</span>
-              {newest && <span className="ops-muted">{clock(newest.event_time)}</span>}
+              <span>Rules</span>
+              <span className="ops-muted">{rules ? clock(rules.at) : "no live pass yet"}</span>
             </div>
-            {recent.length === 0 ? (
-              <p className="ops-empty">Nothing detected in the stored history yet.</p>
+            {!rules ? (
+              <p className="ops-empty">
+                Turn on live traffic on the map and press Apply rules. What those rules find
+                shows up here.
+              </p>
             ) : (
-              <ul className="ops-list">
-                {recent.slice(0, 6).map((event) => (
-                  <li key={event.id}>
-                    <button
-                      type="button"
-                      className="ops-row"
-                      data-ops-event={event.id}
-                      onClick={() => onSelectEvent?.(event.id)}
-                      title="Open on the map"
-                    >
-                      <span className={`ops-sev ops-sev--${event.severity}`} />
-                      <span className="ops-time mono">{clock(event.event_time)}</span>
-                      <span className="ops-what">{niceType(event.event_type)}</span>
-                      <span className="ops-where">{event.place_icao ?? event.place_name ?? "—"}</span>
-                      <span className="ops-who mono">{event.callsigns.join(" / ") || "—"}</span>
-                      {event.separation_nm !== null && (
-                        <span className="ops-metric">{event.separation_nm} NM</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <p className="ops-note">{rules.summary}</p>
+
+                {rules.conflicts.length > 0 && (
+                  <ul className="detection-list" data-detection-conflicts>
+                    {rules.conflicts.slice(0, 5).map((item) => (
+                      <li key={`${item.icao24_a ?? item.a}-${item.icao24_b ?? item.b}`} className="is-conflict">
+                        <strong>
+                          {item.a} / {item.b}
+                        </strong>
+                        <span>
+                          {item.separation_nm} NM
+                          {item.vertical_ft !== null && item.vertical_ft !== undefined
+                            ? ` · ${item.vertical_ft} ft`
+                            : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {rules.predicted.length > 0 && (
+                  <ul className="detection-list" data-predicted-list>
+                    {rules.predicted.slice(0, 4).map((item) => (
+                      <li key={`${item.a}-${item.b}`} className="is-predicted">
+                        <strong>
+                          {item.a} / {item.b}
+                        </strong>
+                        <span>
+                          {item.predicted_nm} NM in {item.time_to_cpa_s}s (now {item.current_nm})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {rules.motion.length > 0 && (
+                  <ul className="detection-list" data-motion-list>
+                    {rules.motion.slice(0, 4).map((item) => (
+                      <li key={`${item.callsign}-${item.kind}`} className="is-motion">
+                        <strong>{item.callsign}</strong>
+                        <span>
+                          {(item.kind ?? "").replace(/_/g, " ")} — {item.detail ?? ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {rules.unusual.length > 0 && (
+                  <ul className="detection-list" data-unusual-list>
+                    {rules.unusual.slice(0, 5).map((item) => (
+                      <li key={`${item.callsign}-${item.kind}`} className="is-unusual">
+                        <strong>{item.callsign}</strong>
+                        <span>{item.detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {rules.overspeed.length > 0 && (
+                  <ul className="detection-list" data-detection-overspeed>
+                    {rules.overspeed.slice(0, 5).map((item) => (
+                      <li key={item.icao24 ?? item.callsign} className="is-overspeed">
+                        <strong>{item.callsign}</strong>
+                        <span>
+                          {item.ground_speed_kt} kt
+                          {item.limit_kt ? ` (limit ${item.limit_kt})` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {rules.conflicts.length === 0 &&
+                  rules.predicted.length === 0 &&
+                  rules.motion.length === 0 &&
+                  rules.unusual.length === 0 &&
+                  rules.overspeed.length === 0 && (
+                    <p className="ops-empty">Nothing tripped the current rules on that pass.</p>
+                  )}
+              </>
             )}
           </div>
 

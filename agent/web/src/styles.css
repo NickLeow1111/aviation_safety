@@ -2535,7 +2535,9 @@ table.data tbody tr:hover {
 .map-empty { text-align: center; color: var(--muted); padding: 18px; }
 
 .map-detail {
-  position: absolute; right: 12px; top: 12px; width: 268px;
+  /* Clear of the zoom control: the card used to start level with it, so the +/– buttons
+     sat on top of the close X and the card could not be dismissed. */
+  position: absolute; right: 12px; top: 92px; width: 268px;
   background: var(--panel); border: 1px solid var(--border-strong);
   border-radius: 12px; box-shadow: var(--shadow-sm); padding: 12px 13px;
 }

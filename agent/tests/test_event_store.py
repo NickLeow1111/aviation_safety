@@ -271,3 +271,27 @@ def test_the_map_can_be_filtered_to_one_detector():
     sql, params = store.build_query(detector="openaria")
     assert "detector = %s" in sql
     assert "openaria" in params
+
+
+def test_aria_source_is_a_virtual_filter_not_a_column_value():
+    """The map's ARIA pill is not a `source` — it is the engine-produced subset of derived.
+
+    Treating it as a column value would quietly return nothing, because no row is ever
+    written with source='aria'.
+    """
+    sql, params = store.build_query(source="aria")
+    assert "metrics->>'engine' IS NOT NULL" in sql
+    assert "source = 'derived'" in sql
+    assert "aria" not in params
+
+
+def test_a_real_source_still_binds_a_parameter():
+    sql, params = store.build_query(source="derived")
+    assert "source = %s" in sql
+    # The last parameter is the limit; the source is bound, never interpolated.
+    assert params[0] == "derived"
+
+
+def test_unknown_source_filter_is_refused():
+    with pytest.raises(ValueError):
+        store.build_query(source="guesswork")

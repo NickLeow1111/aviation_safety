@@ -31,6 +31,12 @@ DEFAULT_DSN = "postgresql:///safetyintel?host=/var/run/postgresql"
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "db" / "001_safety_event.sql"
 
 SOURCES = ("report", "upload", "derived")
+
+# Filters the map offers that are not column values. "aria" is not a `source`: it is the
+# subset of derived events an engine computed over the whole track history, which is what
+# the ARIA tag already means in the table.
+VIRTUAL_SOURCES = {"aria": "source = 'derived' AND metrics->>'engine' IS NOT NULL"}
+SOURCE_FILTERS = SOURCES + tuple(VIRTUAL_SOURCES)
 SEVERITIES = ("critical", "high", "medium", "low", "unknown")
 
 # Canonical event types the map knows how to draw and colour. A producer may use
@@ -278,10 +284,13 @@ def build_query(
         clauses.append("place_icao = %s")
         params.append(str(place_icao).upper())
     if source:
-        if source not in SOURCES:
-            raise ValueError(f"source must be one of {SOURCES}")
-        clauses.append("source = %s")
-        params.append(source)
+        if source in VIRTUAL_SOURCES:
+            clauses.append(VIRTUAL_SOURCES[source])
+        elif source in SOURCES:
+            clauses.append("source = %s")
+            params.append(source)
+        else:
+            raise ValueError(f"source must be one of {SOURCE_FILTERS}")
 
     if detector:
         if detector not in DETECTORS:

@@ -9,7 +9,7 @@ import { LoginPage } from "./LoginPage";
 // message. The map chunk loads the first time somebody opens the map.
 const MapView = lazy(() => import("./MapView").then((module) => ({ default: module.MapView })));
 import { streamChat } from "./sse";
-import type { ChartArtifact, ChatMessage, ChatSession, ToolTrace } from "./types";
+import type { ChartArtifact, ChatMessage, ChatSession, RulesSnapshot, ToolTrace } from "./types";
 
 type ReadyState = "checking" | "ready" | "error";
 type Theme = "light" | "dark";
@@ -77,6 +77,9 @@ export default function App() {
     enabled: false,
     bbox: null,
   });
+  // Rule results travel map -> app -> chat, because the board that shows them and the
+  // controls that produce them now live in different panes.
+  const [rulesSnapshot, setRulesSnapshot] = useState<RulesSnapshot | null>(null);
   const [user, setUser] = useState<{ name: string; role: string } | null>(null);
   const [ready, setReady] = useState<ReadyState>("checking");
   const [readyMsg, setReadyMsg] = useState("");
@@ -280,12 +283,13 @@ export default function App() {
 
       {view === "map" ? (
         <Suspense fallback={<div className="map-loading">Loading the map…</div>}>
-          <MapView onLiveChange={setLiveState} focusEventId={pendingEvent} />
+          <MapView onLiveChange={setLiveState} onRulesChange={setRulesSnapshot} focusEventId={pendingEvent} />
         </Suspense>
       ) : (
       <div className={`app-shell ${charts.length === 0 ? "app-shell--solo" : ""}`}>
         <Chat
           liveGrounding={liveState.enabled}
+          rules={rulesSnapshot}
           messages={messages}
           traces={traces}
           busy={busy}

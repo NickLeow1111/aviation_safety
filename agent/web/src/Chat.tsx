@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { OpsBoard } from "./OpsBoard";
+import type { RulesSnapshot } from "./types";
 import type { ChatMessage } from "./types";
 
 /** The chat panel, kept deliberately plain.
@@ -20,6 +21,7 @@ export function Chat({
   liveGrounding = false,
   suggestions,
   onSelectEvent,
+  rules = null,
 }: {
   messages: ChatMessage[];
   traces?: unknown[];
@@ -31,6 +33,8 @@ export function Chat({
   suggestions: string[];
   /** A detection on the ops board was clicked: show it on the map. */
   onSelectEvent?: (id: number) => void;
+  /** Rule results from the map, shown on the ops board. */
+  rules?: RulesSnapshot | null;
 }) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -58,7 +62,7 @@ export function Chat({
         {ready === "error" && <span className="chat-warn">offline</span>}
       </header>
 
-      <OpsBoard onSelectEvent={onSelectEvent} />
+      <OpsBoard onSelectEvent={onSelectEvent} rules={rules} />
 
       <div className="messages messages--minimal" ref={scrollRef}>
         {messages.length === 0 && (

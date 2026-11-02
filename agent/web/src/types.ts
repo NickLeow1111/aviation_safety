@@ -41,3 +41,26 @@ export type ChatSession = {
   traces: ToolTrace[];
   charts: ChartArtifact[];
 };
+
+/** What the map's rule controls found on the last live pass.
+ *
+ *  These used to render underneath the "Apply rules" button, which meant the answer to a
+ *  question lived in the middle of the controls that asked it. The Operations board shows
+ *  them now, so the map keeps the controls and the board reports the result.
+ */
+export interface RulesSnapshot {
+  at: string;
+  summary: string;
+  conflicts: Array<{
+    icao24_a?: string;
+    icao24_b?: string;
+    a?: string;
+    b?: string;
+    separation_nm?: number | null;
+    vertical_ft?: number | null;
+  }>;
+  predicted: Array<{ a?: string; b?: string; predicted_nm?: number | null; time_to_cpa_s?: number | null; current_nm?: number | null }>;
+  motion: Array<{ callsign?: string; kind?: string; detail?: string }>;
+  unusual: Array<{ callsign?: string; kind?: string; detail?: string }>;
+  overspeed: Array<{ icao24?: string; callsign?: string; ground_speed_kt?: number | null; limit_kt?: number | null }>;
+}

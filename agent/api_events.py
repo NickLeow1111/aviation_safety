@@ -73,6 +73,9 @@ def list_events(
     limit: int = 1000,
 ) -> dict[str, Any]:
     """Events for the current viewport and filters, plus the counts the legend shows."""
+    # A bad filter is the caller's mistake, not an outage: say so instead of blaming the store.
+    if source and source not in store.SOURCE_FILTERS:
+        raise HTTPException(400, f"source must be one of {store.SOURCE_FILTERS}")
     filters: dict[str, Any] = {
         "bbox": _parse_bbox(bbox),
         "since": _parse_time(since, "since"),
