@@ -3118,8 +3118,15 @@ table.data tbody tr:hover {
 .replay-ticks span {
   position: absolute; top: 0; width: 2px; height: 8px; border-radius: 1px; opacity: .55;
 }
+.replay-graph {
+  position: absolute; left: 12px; right: 12px; bottom: 70px; z-index: 2;
+  background: rgba(255, 255, 255, .95); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 6px 10px 4px; box-shadow: var(--shadow-sm);
+}
+.replay-graph svg { display: block; width: 100%; height: 44px; }
+.replay-graph-label { display: block; font-size: 10px; color: var(--muted); }
 .replay-note {
-  position: absolute; left: 12px; right: 12px; bottom: 74px; z-index: 1;
+  position: absolute; left: 12px; right: 12px; bottom: 138px; z-index: 1;
   margin: 0; padding: 6px 10px; border-radius: 8px;
   background: rgba(27, 42, 74, .82); color: #fff; font-size: 10.5px; line-height: 1.45;
 }

@@ -142,6 +142,7 @@ def test_the_board_is_one_round_trip(monkeypatch):
             (65,),  # detections in window
             (4,),  # detections in the last hour
             (70, 50.0, 5, 6, 18.6, 18.7, 509.3),  # coverage
+            (900, 12, 3),  # track quality: steps, repeated fixes, implausible segments
             (16.0,),  # track hours
         ],
         many=[[], [(datetime.now(timezone.utc), 3)], [], [], [], [], [], []],

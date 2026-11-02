@@ -295,3 +295,16 @@ def test_a_real_source_still_binds_a_parameter():
 def test_unknown_source_filter_is_refused():
     with pytest.raises(ValueError):
         store.build_query(source="guesswork")
+
+
+def test_every_promoted_kind_is_in_the_canonical_vocabulary():
+    """The vocabulary is what anything validating a stored type checks against.
+
+    `unstable_approach` was promoted with a severity and written to the table for weeks
+    while missing from this list, which is exactly the kind of drift a list of strings
+    invites. Assert the relationship instead of trusting the two lists to agree.
+    """
+    import promote
+
+    assert promote.KEPT_KINDS <= set(store.EVENT_TYPES)
+    assert "unstable_approach" in store.EVENT_TYPES

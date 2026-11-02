@@ -7,6 +7,7 @@ import {
 } from "maplibre-gl";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { planeImage } from "./planeIcon";
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -22,6 +23,7 @@ setWorkerUrl(maplibreWorkerUrl);
 
 const BASEMAP_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const TRACK_COLOURS = ["#1b2a4a", "#b45309"];
+const TAIL_MS = 60_000;
 
 interface Sample {
   t: string;
@@ -171,6 +173,9 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(6);
   const [loading, setLoading] = useState(false);
+  // Distinct from "no events": the list is slow enough that saying there are none while
+  // it is still arriving is simply untrue.
+  const [loadingEvents, setLoadingEvents] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // ---- the list of things worth replaying --------------------------------
@@ -188,6 +193,9 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
       })
       .catch(() => {
         if (!cancelled) setError("Could not load the event list.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEvents(false);
       });
     return () => {
       cancelled = true;
@@ -251,7 +259,7 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
         ? Math.abs(positions[0].altitude_ft - positions[1].altitude_ft)
         : null;
     return { lateral, vertical };
-  }, [positions, mapReady]);
+  }, [positions, mapReady, replay, cursor]);
 
   // ---- map ---------------------------------------------------------------
   useEffect(() => {
@@ -275,24 +283,37 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
       if (!instance.getSource("track-a")) {
         instance.addSource("track-a", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         instance.addSource("track-b", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        instance.addSource("tail-a", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        instance.addSource("tail-b", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         instance.addSource("dot-a", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         instance.addSource("dot-b", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         instance.addSource("cpa", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
         instance.addLayer({ id: "track-a-line", type: "line", source: "track-a", paint: { "line-color": TRACK_COLOURS[0], "line-width": 2, "line-opacity": 0.65 } });
         instance.addLayer({ id: "track-b-line", type: "line", source: "track-b", paint: { "line-color": TRACK_COLOURS[1], "line-width": 2, "line-opacity": 0.65 } });
-        instance.addLayer({
-          id: "dot-a-circle",
-          type: "circle",
-          source: "dot-a",
-          paint: { "circle-radius": 8, "circle-color": TRACK_COLOURS[0], "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
+        instance.addLayer({ id: "tail-a-line", type: "line", source: "tail-a", paint: { "line-color": TRACK_COLOURS[0], "line-width": 4, "line-opacity": 0.45 } });
+        instance.addLayer({ id: "tail-b-line", type: "line", source: "tail-b", paint: { "line-color": TRACK_COLOURS[1], "line-width": 4, "line-opacity": 0.45 } });
+
+        // An aircraft, not a dot: the silhouette points where the aircraft is pointing,
+        // which is the part a circle cannot tell you.
+        TRACK_COLOURS.forEach((colour, index) => {
+          instance.addImage(`replay-plane-${index}`, planeImage(colour), { pixelRatio: 2 });
         });
-        instance.addLayer({
-          id: "dot-b-circle",
-          type: "circle",
-          source: "dot-b",
-          paint: { "circle-radius": 8, "circle-color": TRACK_COLOURS[1], "circle-stroke-width": 2, "circle-stroke-color": "#fff" },
-        });
+        for (const sourceId of ["dot-a", "dot-b"] as const) {
+          instance.addLayer({
+            id: `${sourceId}-icon`,
+            type: "symbol",
+            source: sourceId,
+            layout: {
+              "icon-image": ["get", "icon"],
+              "icon-size": 0.85,
+              "icon-rotate": ["get", "heading"],
+              "icon-rotation-alignment": "map",
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+            },
+          });
+        }
         instance.addLayer({
           id: "cpa-circle",
           type: "circle",
@@ -354,18 +375,45 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
   useEffect(() => {
     const instance = map.current;
     if (!instance || !mapReady) return;
-    const point = (sample: Sample | null) =>
+    const tagged = (sample: Sample | null, index: number) =>
       sample
         ? {
             type: "FeatureCollection" as const,
             features: [
-              { type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [sample.lon, sample.lat] }, properties: {} },
+              {
+                type: "Feature" as const,
+                geometry: { type: "Point" as const, coordinates: [sample.lon, sample.lat] },
+                properties: { icon: `replay-plane-${index}`, heading: sample.track_deg ?? 0 },
+              },
             ],
           }
         : { type: "FeatureCollection" as const, features: [] };
-    (instance.getSource("dot-a") as GeoJSONSource | undefined)?.setData(point(positions[0] ?? null));
-    (instance.getSource("dot-b") as GeoJSONSource | undefined)?.setData(point(positions[1] ?? null));
-  }, [positions, mapReady]);
+
+    (instance.getSource("dot-a") as GeoJSONSource | undefined)?.setData(tagged(positions[0] ?? null, 0));
+    (instance.getSource("dot-b") as GeoJSONSource | undefined)?.setData(tagged(positions[1] ?? null, 1));
+
+    // The last minute of flight, so direction reads at a glance instead of from the icon
+    // angle alone.
+    if (replay) {
+      const tails = replay.aircraft.slice(0, 2).map((craft) => {
+        const points = craft.samples
+          .filter((sample) => {
+            const moment = Date.parse(sample.t);
+            return moment <= cursor && moment >= cursor - TAIL_MS;
+          })
+          .map((sample) => [sample.lon, sample.lat]);
+        return {
+          type: "FeatureCollection" as const,
+          features:
+            points.length > 1
+              ? [{ type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: points }, properties: {} }]
+              : [],
+        };
+      });
+      (instance.getSource("tail-a") as GeoJSONSource | undefined)?.setData(tails[0] ?? { type: "FeatureCollection", features: [] });
+      (instance.getSource("tail-b") as GeoJSONSource | undefined)?.setData(tails[1] ?? { type: "FeatureCollection", features: [] });
+    }
+  }, [positions, mapReady, replay, cursor]);
 
   // ---- the clock ----------------------------------------------------------
   useEffect(() => {
@@ -405,6 +453,57 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
     );
   }, [replay]);
 
+  /** Separation against time, sampled once per second of the window. */
+  const separationSeries = useMemo(() => {
+    if (!replay || replay.aircraft.length < 2 || !span.end) return [];
+    const step = Math.max(1000, (span.end - span.start) / 260);
+    const points: { t: number; nm: number }[] = [];
+    for (let moment = span.start; moment <= span.end; moment += step) {
+      const first = positionAt(replay.aircraft[0], moment);
+      const second = positionAt(replay.aircraft[1], moment);
+      if (first && second) points.push({ t: moment, nm: distanceNm(first, second) });
+    }
+    return points;
+  }, [replay, span]);
+
+  const closest = useMemo(() => {
+    if (!separationSeries.length) return null;
+    return separationSeries.reduce((best, point) => (point.nm < best.nm ? point : best), separationSeries[0]);
+  }, [separationSeries]);
+
+  const sampleMoments = useMemo(() => {
+    if (!replay) return [];
+    const set = new Set<number>();
+    replay.aircraft.forEach((craft) => craft.samples.forEach((sample) => set.add(Date.parse(sample.t))));
+    return Array.from(set).sort((left, right) => left - right);
+  }, [replay]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!span.end) return;
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+      if (event.code === "Space") {
+        event.preventDefault();
+        setPlaying((value) => !value);
+      } else if (event.code === "ArrowRight" || event.code === "ArrowLeft") {
+        event.preventDefault();
+        setPlaying(false);
+        const direction = event.code === "ArrowRight" ? 1 : -1;
+        setCursor((current) => {
+          if (direction > 0) {
+            const next = sampleMoments.find((moment) => moment > current + 1);
+            return next ?? span.end;
+          }
+          const previous = [...sampleMoments].reverse().find((moment) => moment < current - 1);
+          return previous ?? span.start;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [span, sampleMoments]);
+
   const sampleTicks = useMemo(() => {
     if (!replay || !span.end) return [];
     const width = span.end - span.start || 1;
@@ -422,7 +521,7 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
       <aside className="replay-list">
         <div className="replay-list-head">
           <strong>Replayable events</strong>
-          <span className="ops-muted">{events.length}</span>
+          <span className="ops-muted">{loadingEvents ? "…" : events.length}</span>
         </div>
         <p className="replay-hint">
           Events that name two aircraft. Each is replayed from the positions the poller
@@ -443,7 +542,11 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
               <span className="replay-item-place">{event.place_icao ?? "—"}</span>
             </button>
           ))}
-          {!events.length && <p className="ops-empty">No event names two aircraft yet.</p>}
+          {!events.length && (
+            <p className="ops-empty">
+              {loadingEvents ? "Loading events…" : "No event names two aircraft yet."}
+            </p>
+          )}
         </div>
       </aside>
 
@@ -527,6 +630,32 @@ export function ReplayView({ focusEventId = null }: { focusEventId?: number | nu
                 </div>
               </div>
             </div>
+
+            {separationSeries.length > 1 && (
+              <div className="replay-graph" aria-label="separation against time">
+                <svg viewBox="0 0 100 24" preserveAspectRatio="none" data-replay-graph>
+                  {(() => {
+                    const spanMs = span.end - span.start || 1;
+                    const top = Math.max(3.4, ...separationSeries.map((point) => point.nm));
+                    const toX = (moment: number) => ((moment - span.start) / spanMs) * 100;
+                    const toY = (nm: number) => 24 - (nm / top) * 22 - 1;
+                    const path = separationSeries.map((point) => `${toX(point.t).toFixed(2)},${toY(point.nm).toFixed(2)}`).join(" ");
+                    const threshold = toY(3);
+                    return (
+                      <>
+                        <line x1="0" y1={threshold} x2="100" y2={threshold} stroke="#d93a3a" strokeWidth="0.35" strokeDasharray="1 1" vectorEffect="non-scaling-stroke" />
+                        <polyline points={path} fill="none" stroke="#1b2a4a" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                        {closest && <circle cx={toX(closest.t)} cy={toY(closest.nm)} r="1.1" fill="#d93a3a" vectorEffect="non-scaling-stroke" />}
+                        <line x1={toX(cursor)} y1="0" x2={toX(cursor)} y2="24" stroke="#b45309" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+                      </>
+                    );
+                  })()}
+                </svg>
+                <span className="replay-graph-label">
+                  separation · min {closest ? `${closest.nm.toFixed(2)} NM` : "—"} · dashed line is 3 NM
+                </span>
+              </div>
+            )}
 
             <p className="replay-note">
               {niceType(replay.event_type)} · {replay.severity} · {replay.place_icao ?? "unplaced"} · the ticks

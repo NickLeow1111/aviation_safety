@@ -33,6 +33,10 @@ type Coverage = {
   median_interval_s: number | null;
   p95_interval_s: number | null;
   longest_gap_s: number | null;
+  /** Fixes that repeat the previous position, and steps too fast to be an aircraft. */
+  track_steps?: number;
+  repeated_fixes?: number;
+  implausible_segments?: number;
 };
 
 type PhaseCount = { phase: string; aircraft: number };
@@ -470,6 +474,16 @@ export function OpsBoard({
                   </span>
                 </span>
                 <span className="ops-break-count">{coverage.insufficient_track} short</span>
+              </li>
+              <li className="ops-break-row" data-ops-quality>
+                <span className="ops-break-name">Track quality</span>
+                <span className="ops-break-count">
+                  {(coverage.repeated_fixes ?? 0) + (coverage.implausible_segments ?? 0)} doubtful
+                </span>
+                <span className="ops-muted">
+                  of {coverage.track_steps ?? 0} steps: {coverage.repeated_fixes ?? 0} repeated fixes ·{" "}
+                  {coverage.implausible_segments ?? 0} over 900 kt
+                </span>
               </li>
             </ul>
             <p className="ops-note">

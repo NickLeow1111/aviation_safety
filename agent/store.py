@@ -46,6 +46,10 @@ EVENT_TYPES = (
     "loss_of_separation",
     "runway_incursion",
     "go_around",
+    # Detected from a track (an unstable final), not read off a report. It was promoted
+    # with a severity and stored like any other event, but left out of this list — so
+    # anything that validated against the vocabulary treated it as unknown.
+    "unstable_approach",
     "bird_strike",
     "taxi_error",
     "external_damage",

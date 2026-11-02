@@ -332,7 +332,40 @@ def coverage(conn: Any, minutes: int = 30) -> dict[str, Any]:
         )
         row = cur.fetchone()
 
+        # The same window, asked a different question: how many of the fixes can be
+        # believed? A repeated position is a receiver re-reporting the last known point;
+        # a step that implies more than 900 kt across the ground is not an aircraft.
+        cur.execute(
+            """
+            WITH obs AS (
+                SELECT icao24, observed_at, lat, lon,
+                       LAG(observed_at) OVER w AS prev_at,
+                       LAG(lat) OVER w AS prev_lat,
+                       LAG(lon) OVER w AS prev_lon
+                  FROM aircraft_track
+                 WHERE observed_at > now() - make_interval(mins => %s)
+                WINDOW w AS (PARTITION BY icao24 ORDER BY observed_at)
+            ), steps AS (
+                SELECT EXTRACT(EPOCH FROM observed_at - prev_at) AS gap_s,
+                       60 * sqrt(power(lat - prev_lat, 2)
+                                 + power(cos(radians((lat + prev_lat) / 2)) * (lon - prev_lon), 2)) AS nm
+                  FROM obs
+                 WHERE prev_at IS NOT NULL
+            )
+            SELECT COUNT(*) AS steps,
+                   COUNT(*) FILTER (WHERE nm < 0.01) AS repeated,
+                   COUNT(*) FILTER (WHERE nm >= 0.01
+                                      AND nm / GREATEST(gap_s, 1) * 3600 > 900) AS implausible
+              FROM steps
+            """,
+            (minutes,),
+        )
+        quality = cur.fetchone()
+
     aircraft, median_samples, insufficient, with_long_gap, median_interval, p95_interval, longest_gap = row
+    # A short row here means the aggregate could not be read, not that the tracks are
+    # perfect — report zeroes and let the panel show nothing rather than fail the board.
+    steps, repeated_fixes, implausible_segments = (tuple(quality or ()) + (0, 0, 0))[:3]
     return {
         "window_minutes": minutes,
         "aircraft": aircraft or 0,
@@ -342,6 +375,9 @@ def coverage(conn: Any, minutes: int = 30) -> dict[str, Any]:
         "median_interval_s": _num(median_interval),
         "p95_interval_s": _num(p95_interval),
         "longest_gap_s": _num(longest_gap),
+        "track_steps": steps or 0,
+        "repeated_fixes": repeated_fixes or 0,
+        "implausible_segments": implausible_segments or 0,
     }
 
 
