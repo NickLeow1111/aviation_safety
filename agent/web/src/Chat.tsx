@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { OpsBoard } from "./OpsBoard";
+import { InsightsPanel, loadPinned, savePinned, type PinnedQuery } from "./InsightsPanel";
 import type { RulesSnapshot } from "./types";
 import type { ChatMessage } from "./types";
 
@@ -20,7 +21,7 @@ export function Chat({
   ready,
   liveGrounding = false,
   suggestions,
-  onSelectEvent,
+  onOpenReplay,
   rules = null,
 }: {
   messages: ChatMessage[];
@@ -35,9 +36,34 @@ export function Chat({
   onSelectEvent?: (id: number) => void;
   /** Rule results from the map, shown on the ops board. */
   rules?: RulesSnapshot | null;
+  /** Hand an event to the replay pane. */
+  onOpenReplay?: (id: number) => void;
 }) {
   const [input, setInput] = useState("");
+  const [caseId, setCaseId] = useState<number | null>(null);
+  const [pinned, setPinned] = useState<PinnedQuery[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setPinned(loadPinned());
+  }, []);
+
+  const pin = (question: string) => {
+    setPinned((current) => {
+      if (current.some((item) => item.question === question)) return current;
+      const next = [...current, { id: `${Date.now()}`, question, addedAt: Date.now() }];
+      savePinned(next);
+      return next;
+    });
+  };
+
+  const unpin = (id: string) => {
+    setPinned((current) => {
+      const next = current.filter((item) => item.id !== id);
+      savePinned(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -51,7 +77,12 @@ export function Chat({
   };
 
   return (
-    <aside className="chat-shell chat-shell--minimal">
+    <aside className="chat-shell chat-shell--minimal analysis-layout">
+      <div className="analysis-rail">
+        <OpsBoard onSelectEvent={(id) => setCaseId(id)} rules={rules} />
+      </div>
+
+      <div className="analysis-canvas">
       <header className="chat-top">
         <span className="chat-title">Analysis</span>
         {liveGrounding && (
@@ -62,7 +93,7 @@ export function Chat({
         {ready === "error" && <span className="chat-warn">offline</span>}
       </header>
 
-      <OpsBoard onSelectEvent={onSelectEvent} rules={rules} />
+      <InsightsPanel caseId={caseId} onAsk={onSend} onOpenReplay={onOpenReplay} pinned={pinned} onUnpin={unpin} />
 
       <div className="messages messages--minimal" ref={scrollRef}>
         {messages.length === 0 && (
@@ -78,9 +109,18 @@ export function Chat({
           </div>
         )}
 
-        {messages.map((message) => (
-          <Message key={message.id} message={message} />
-        ))}
+        {messages.map((message, index) => {
+          // An answer is pinned by the question that produced it: re-running the question is
+          // the whole point, and the answer text is not a query.
+          const question = [...messages.slice(0, index)].reverse().find((earlier) => earlier.role === "user")?.text ?? "";
+          return (
+            <Message
+              key={message.id}
+              message={message}
+              onPin={message.role === "bot" && question ? () => pin(question) : undefined}
+            />
+          );
+        })}
 
         {busy && (
           <div className="chat-thinking" aria-live="polite">
@@ -118,11 +158,12 @@ export function Chat({
           </svg>
         </button>
       </div>
+      </div>
     </aside>
   );
 }
 
-function Message({ message }: { message: ChatMessage }) {
+function Message({ message, onPin }: { message: ChatMessage; onPin?: () => void }) {
   if (message.role === "user") {
     return <div className="chat-user">{message.text}</div>;
   }
@@ -132,6 +173,11 @@ function Message({ message }: { message: ChatMessage }) {
 
   return (
     <article className="chat-answer">
+      {onPin && message.text && (
+        <button type="button" className="chat-pin" data-pin-answer onClick={() => onPin()} title="Pin this analysis">
+          Pin
+        </button>
+      )}
       <div className="chat-answer-body">
         {message.text ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown> : <span className="chat-dots">…</span>}
       </div>

@@ -24,6 +24,7 @@ from pydantic import BaseModel
 import assistant
 import envfile
 import store
+from api_analysis import router as analysis_router
 from api_assistant import router as assistant_router
 from api_events import router as events_router
 from api_ops import router as ops_router
@@ -55,6 +56,27 @@ app = FastAPI(title="Safety Intelligence Bot")
 app.include_router(events_router)
 app.include_router(assistant_router)
 app.include_router(ops_router)
+app.include_router(analysis_router)
+
+
+@app.on_event("startup")
+def _warm_analysis() -> None:
+    """Count the slow denominators before anyone asks.
+
+    `rates` scans every fix in the window; on one core that is ten seconds of a request. Doing
+    it at startup means the panel opens warm instead of making the first analyst wait.
+    """
+    import threading
+
+    def run() -> None:
+        try:
+            import api_analysis
+
+            api_analysis.rates(days=7)
+        except Exception:  # noqa: BLE001 - a warm-up must never stop the app starting
+            logging.getLogger("safety-intel-bot").warning("analysis warm-up failed", exc_info=True)
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 def _demo_mode_enabled() -> bool:

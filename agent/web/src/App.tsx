@@ -306,6 +306,10 @@ export default function App() {
             setPendingEvent(id);
             setView("map");
           }}
+          onOpenReplay={(id) => {
+            setPendingEvent(id);
+            setView("replay");
+          }}
         />
 
         {/* The output pane exists for artefacts a chart or tool produced. With
