@@ -178,6 +178,30 @@ type LivePayload = {
   cached: boolean;
 };
 
+type AircraftProfile = {
+  icao24: string;
+  callsign: string | null;
+  minutes: number;
+  samples: {
+    t: string;
+    altitude_ft: number | null;
+    ground_speed_kt: number | null;
+    vertical_rate_fpm: number | null;
+  }[];
+  summary: {
+    fixes: number;
+    span_s: number;
+    coverage: number;
+    altitude_min_ft: number | null;
+    altitude_max_ft: number | null;
+    ground_speed_kt_max: number | null;
+    vehicle_type?: string | null;
+    aircraft_type: string | null;
+    on_ground: boolean;
+  } | null;
+  note: string | null;
+};
+
 type LiveStatus = {
   mode: string;
   credits_used: number;
@@ -270,9 +294,22 @@ export function MapView({
   const [assistantOpen, setAssistantOpen] = useState(true);
   // The operations board pushed rule results out of the analysis tab and needed a home on
   // the screen where the rules actually run. It lives here, closed until asked for.
-  const [opsOpen, setOpsOpen] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(true);
+  const [flightNote, setFlightNote] = useState<string | null>(null);
+
   const [rulesSnapshot, setRulesSnapshot] = useState<RulesSnapshot | null>(null);
-  const [aircraft, setAircraft] = useState<Aircraft | null>(null);
+  // The aircraft and the profile that explains it are one selection, not two independent
+  // pieces of state that can disagree about which aircraft is on screen.
+  const [selection, setSelection] = useState<{ aircraft: Aircraft; profile: AircraftProfile | null } | null>(null);
+  const aircraft = selection?.aircraft ?? null;
+  const profile = selection?.profile ?? null;
+  const setAircraft = useCallback((next: Aircraft | null) => {
+    setSelection((current) => {
+      if (!next) return null;
+      const same = current?.aircraft.icao24 === next.icao24;
+      return { aircraft: next, profile: same ? current?.profile ?? null : null };
+    });
+  }, []);
 
   // ---- map lifecycle -----------------------------------------------------
   useEffect(() => {
@@ -841,6 +878,103 @@ export function MapView({
     fittedOnce.current = true;
   }, [events, ready, fitToEvents]);
 
+  // A callsign is a claim about one aircraft; clicking it should put that aircraft on screen
+  // rather than filter a table. If nothing is broadcasting the callsign we say so instead of
+  // panning to a stale position.
+  const loadProfile = useCallback(async (code: string) => {
+    let body: AircraftProfile | null = null;
+    try {
+      const response = await fetch(`/api/aircraft/${code}/profile?minutes=20`);
+      body = response.ok ? ((await response.json()) as AircraftProfile) : null;
+    } catch {
+      body = null;
+    }
+    setSelection((current) =>
+      current && current.aircraft.icao24 === code ? { aircraft: current.aircraft, profile: body } : current,
+    );
+  }, []);
+
+  const focusFlight = useCallback(async (callsign: string) => {
+    const wanted = callsign.trim().toUpperCase();
+    const found = (liveRef.current?.aircraft ?? []).find(
+      (item) => (item.callsign ?? "").trim().toUpperCase() === wanted,
+    );
+    if (!found) {
+      // The live list only covers the current viewport. A flight named on an event may be
+      // far away and still flying, so ask where it was last heard before saying it is gone.
+      try {
+        const response = await fetch(`/api/aircraft/lookup?callsign=${encodeURIComponent(wanted)}`);
+        const body = (await response.json()) as {
+          found: boolean;
+          fix: {
+            icao24: string;
+            callsign: string | null;
+            lat: number | null;
+            lon: number | null;
+            altitude_ft: number | null;
+            ground_speed_kt: number | null;
+            track_deg: number | null;
+            vertical_rate_fpm: number | null;
+            on_ground: boolean;
+            age_s: number | null;
+          } | null;
+        };
+        if (body?.found && body.fix && body.fix.lat !== null && body.fix.lon !== null) {
+          const fix = body.fix;
+          const fixLat = fix.lat as number;
+          const fixLon = fix.lon as number;
+          setAircraft({
+            icao24: fix.icao24,
+            callsign: fix.callsign ?? wanted,
+            country: null,
+            lat: fixLat,
+            lon: fixLon,
+            altitude_ft: fix.altitude_ft,
+            ground_speed_kt: fix.ground_speed_kt,
+            track_deg: fix.track_deg,
+            on_ground: Boolean(fix.on_ground),
+            vertical_rate_fpm: fix.vertical_rate_fpm,
+          });
+          const age = fix.age_s === null ? "unknown" : `${Math.round(fix.age_s)} s`;
+          setFlightNote(
+            `${fix.callsign ?? wanted} was last heard ${age} ago at this position — it is outside the current live view, so this is a stored fix, not a live track.`,
+          );
+          map.current?.flyTo({ center: [fixLon, fixLat], zoom: Math.max(map.current.getZoom(), 10), duration: 700 });
+          void loadProfile(fix.icao24);
+          return;
+        }
+      } catch {
+        /* fall through to the honest "not broadcasting" line */
+      }
+      setAircraft(null);
+      setFlightNote(`${callsign} is not broadcasting right now, so there is no position to show.`);
+      return;
+    }
+    if (found.lat === null || found.lon === null) {
+      setAircraft(found);
+      setFlightNote(`${callsign} is on the feed but has no position fix, so there is nowhere to pan to.`);
+      return;
+    }
+    setFlightNote(null);
+    setAircraft(found);
+    void loadProfile(found.icao24);
+    map.current?.flyTo({
+      center: [found.lon, found.lat],
+      zoom: Math.max(map.current.getZoom(), 11),
+      duration: 700,
+    });
+  }, []);
+
+  // The card shows one instant; the question behind a callsign is "what is it doing?".
+  // These are the stored fixes, read from us — not a fresh OpenSky pull.
+  // A late answer for the aircraft still on screen is a good answer. Dropping it because the
+  // effect re-ran would leave the card permanently showing a snapshot with no profile.
+  useEffect(() => {
+    const code = aircraft?.icao24 ?? null;
+    if (!code || profile?.icao24 === code) return;  // focusFlight already fetched this one
+    void loadProfile(code);
+  }, [aircraft?.icao24, profile?.icao24, loadProfile]);
+
   const focusEvent = useCallback((row: EventRow) => {
     setSelected(row);
     map.current?.flyTo({ center: [row.lon, row.lat], zoom: Math.max(map.current.getZoom(), 11), duration: 600 });
@@ -874,7 +1008,7 @@ export function MapView({
     }));
 
   return (
-    <div className={`map-view ${assistantOpen ? "map-view--assistant" : ""}`}>
+    <div className={`map-view ${assistantOpen ? "map-view--assistant" : ""} ${opsOpen ? "map-view--ops" : ""}`}>
       <aside className="map-rail">
         <div className="map-rail-head">
           <h2>Safety events</h2>
@@ -887,14 +1021,6 @@ export function MapView({
         <div className="map-actions">
           <button className="map-btn" onClick={() => fitToEvents()} disabled={!events.length}>
             Fit to events
-          </button>
-          <button
-            className={`map-btn map-btn--ghost ${opsOpen ? "is-on" : ""}`}
-            data-ops-toggle
-            onClick={() => setOpsOpen((value) => !value)}
-            title="The operations board and the last rule pass"
-          >
-            Operations
           </button>
           <button className="map-btn map-btn--ghost" onClick={() => setShowUpload(true)}>
             Upload file
@@ -1154,10 +1280,18 @@ export function MapView({
                     {(() => {
                       const airline = airlineOf(row.callsigns);
                       if (!airline) return "—";
+                      const flight = (row.callsigns ?? [])[0];
+                      const label = airline.known ? airline.name : airline.code;
+                      if (!flight) return <span>{label}</span>;
                       return (
-                        <span title={`${airline.name}${(row.callsigns ?? []).length ? ` · ${(row.callsigns ?? []).join(", ")}` : ""}`}>
-                          {airline.known ? airline.name : airline.code}
-                        </span>
+                        <button
+                          className="flight-link"
+                          data-flight={flight}
+                          onClick={() => focusFlight(flight)}
+                          title={`${airline.name} · ${flight} — show where it is now`}
+                        >
+                          {label}
+                        </button>
                       );
                     })()}
                   </td>
@@ -1176,7 +1310,11 @@ export function MapView({
         </div>
 
         {aircraft && (
-          <div className="map-detail map-detail--aircraft" data-aircraft-detail>
+          <div
+            className="map-detail map-detail--aircraft"
+            data-aircraft-detail
+            data-profile-state={profile ? String(profile.samples?.length ?? -1) : "none"}
+          >
             <div className="map-detail-head">
               <strong>{aircraft.callsign ?? aircraft.icao24}</strong>
               <button className="map-detail-close" onClick={() => setAircraft(null)} aria-label="Close aircraft">
@@ -1199,7 +1337,69 @@ export function MapView({
               <dt>ICAO24</dt>
               <dd className="map-provenance">{aircraft.icao24} · live ADS-B, not surveillance grade</dd>
             </dl>
+            {profile?.summary && profile.samples.length > 1 && (() => {
+              const altitudes = profile.samples.map((sample) => sample.altitude_ft ?? 0);
+              const speeds = profile.samples.map((sample) => sample.ground_speed_kt ?? 0);
+              const alts = profile.samples.filter((sample) => sample.altitude_ft !== null);
+              const width = 240;
+              const height = 62;
+              const top = Math.max(...altitudes, 1);
+              const bottom = Math.min(...altitudes);
+              const span = Math.max(top - bottom, 1);
+              const line = (values: number[]) =>
+                values
+                  .map((value, index) => {
+                    const x = (index / (values.length - 1)) * width;
+                    const y = height - ((value - bottom) / span) * (height - 10) - 5;
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                  })
+                  .join(" ");
+              const speedPeak = Math.max(...speeds, 1);
+              return (
+                <div className="flight-profile" data-flight-profile>
+                  <div className="flight-profile-head">
+                    <span>
+                      {profile.summary.fixes} fixes · {Math.round(profile.summary.span_s / 60)} min
+                      {profile.summary.aircraft_type ? ` · ${profile.summary.aircraft_type}` : ""}
+                    </span>
+                    <span>
+                      {Math.round(bottom)}–{Math.round(top)} ft
+                    </span>
+                  </div>
+                  <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Altitude and ground speed over recent fixes">
+                    <polyline points={line(altitudes)} fill="none" stroke="currentColor" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+                    <polyline
+                      points={line(speeds.map((value) => bottom + (value / speedPeak) * span))}
+                      fill="none"
+                      stroke="#e08a2e"
+                      strokeWidth="1.2"
+                      strokeDasharray="3 3"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </svg>
+                  <p className="map-provenance">
+                    Solid: altitude (ft). Dashed: ground speed, peak {Math.round(speedPeak)} kt ·{" "}
+                    {Math.round(profile.summary.coverage * 100)}% of 30-second slots carry a fix
+                    {alts.length < profile.summary.fixes ? ` · ${profile.summary.fixes - alts.length} fixes without altitude` : ""}
+                    · newest at right
+                  </p>
+                </div>
+              );
+            })()}
+            {profile?.note && <p className="map-provenance" data-profile-note>{profile.note}</p>}
+            {profile && !profile.note && profile.samples.length < 2 && (
+              <p className="map-provenance" data-profile-note>
+                Only {profile.samples.length} fix{profile.samples.length === 1 ? "" : "es"} for this aircraft in the
+                last {profile.minutes} minutes — nothing to plot yet.
+              </p>
+            )}
           </div>
+        )}
+
+        {flightNote && (
+          <p className="map-flight-note" data-flight-note>
+            {flightNote}
+          </p>
         )}
 
         {selected && (
@@ -1260,56 +1460,64 @@ export function MapView({
         )}
       </div>
 
-      {opsOpen && (
-        <aside className="map-drawer" data-ops-drawer>
-          <header className="map-drawer-head">
-            <span>Operations</span>
-            <button className="map-assistant-close" onClick={() => setOpsOpen(false)} aria-label="Hide the operations board">
-              ×
-            </button>
-          </header>
-          <div className="map-drawer-body">
-            <OpsBoard
-              rules={rulesSnapshot}
-              onSelectEvent={(id) => {
-                const row = eventsRef.current.find((item) => item.id === id);
-                if (row) focusEvent(row);
-              }}
+      <div className="map-side">
+        {assistantOpen ? (
+          <aside className="map-assistant" data-map-assistant>
+            <div className="map-assistant-head">
+              <span>Ask the traffic</span>
+              <button
+                className="map-assistant-close"
+                onClick={() => setAssistantOpen(false)}
+                aria-label="Hide the assistant"
+                data-assistant-toggle
+              >
+                ×
+              </button>
+            </div>
+            <Chat
+              messages={assistant.messages}
+              busy={assistant.busy}
+              onSend={(text) => void assistant.send(text)}
+              ready="ready"
+              liveGrounding={live}
             />
-          </div>
-        </aside>
-      )}
+          </aside>
+        ) : (
+          <button className="map-assistant-open" onClick={() => setAssistantOpen(true)} data-assistant-toggle>
+            Ask
+          </button>
+        )}
 
-      {assistantOpen ? (
-        <aside className="map-assistant" data-map-assistant>
-          <div className="map-assistant-head">
-            <span>Ask the traffic</span>
-            <button
-              className="map-assistant-close"
-              onClick={() => setAssistantOpen(false)}
-              aria-label="Hide the assistant"
-              data-assistant-toggle
-            >
-              ×
-            </button>
-          </div>
-          <Chat
-            messages={assistant.messages}
-            busy={assistant.busy}
-            onSend={(text) => void assistant.send(text)}
-            ready="ready"
-            liveGrounding={live}
-          />
-        </aside>
-      ) : (
-        <button
-          className="map-assistant-open"
-          onClick={() => setAssistantOpen(true)}
-          data-assistant-toggle
-        >
-          Ask
-        </button>
-      )}
+        {opsOpen ? (
+          <aside className="map-ops" data-ops-panel>
+            <div className="map-assistant-head">
+              <span>Operations</span>
+              <button
+                className="map-assistant-close"
+                onClick={() => setOpsOpen(false)}
+                aria-label="Hide the operations board"
+                data-ops-toggle
+              >
+                ×
+              </button>
+            </div>
+            <div className="map-ops-body">
+              <OpsBoard
+                rules={rulesSnapshot}
+                onSelectEvent={(id) => {
+                  const row = eventsRef.current.find((item) => item.id === id);
+                  if (row) focusEvent(row);
+                }}
+                onSelectFlight={(callsign) => focusFlight(callsign)}
+              />
+            </div>
+          </aside>
+        ) : (
+          <button className="map-assistant-open map-ops-open" onClick={() => setOpsOpen(true)} data-ops-toggle>
+            Ops
+          </button>
+        )}
+      </div>
 
       {showUpload && (
         <UploadPanel onClose={() => setShowUpload(false)} onImported={() => void load()} />

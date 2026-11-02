@@ -25,6 +25,7 @@ import assistant
 import envfile
 import store
 from api_analysis import router as analysis_router
+from api_aircraft import router as aircraft_router
 from api_assistant import router as assistant_router
 from api_events import router as events_router
 from api_ops import router as ops_router
@@ -57,6 +58,7 @@ app.include_router(events_router)
 app.include_router(assistant_router)
 app.include_router(ops_router)
 app.include_router(analysis_router)
+app.include_router(aircraft_router)
 
 
 @app.on_event("startup")

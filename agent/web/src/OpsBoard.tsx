@@ -124,9 +124,12 @@ function age(seconds: number | null): string {
 
 export function OpsBoard({
   onSelectEvent,
+  onSelectFlight,
   rules = null,
 }: {
   onSelectEvent?: (id: number) => void;
+  /** Clicking a callsign should put that aircraft on the map, not filter a list. */
+  onSelectFlight?: (callsign: string) => void;
   /** What the map's rule controls found on the last live pass. */
   rules?: RulesSnapshot | null;
 }) {
@@ -260,7 +263,9 @@ export function OpsBoard({
                     {rules.conflicts.slice(0, 5).map((item) => (
                       <li key={`${item.icao24_a ?? item.a}-${item.icao24_b ?? item.b}`} className="is-conflict">
                         <strong>
-                          {item.a} / {item.b}
+                          <button className="flight-link" onClick={() => item.a && onSelectFlight?.(item.a)}>{item.a}</button>
+                          {" / "}
+                          <button className="flight-link" onClick={() => item.b && onSelectFlight?.(item.b)}>{item.b}</button>
                         </strong>
                         <span>
                           {item.separation_nm} NM
@@ -278,7 +283,9 @@ export function OpsBoard({
                     {rules.predicted.slice(0, 4).map((item) => (
                       <li key={`${item.a}-${item.b}`} className="is-predicted">
                         <strong>
-                          {item.a} / {item.b}
+                          <button className="flight-link" onClick={() => item.a && onSelectFlight?.(item.a)}>{item.a}</button>
+                          {" / "}
+                          <button className="flight-link" onClick={() => item.b && onSelectFlight?.(item.b)}>{item.b}</button>
                         </strong>
                         <span>
                           {item.predicted_nm} NM in {item.time_to_cpa_s}s (now {item.current_nm})
@@ -292,7 +299,9 @@ export function OpsBoard({
                   <ul className="detection-list" data-motion-list>
                     {rules.motion.slice(0, 4).map((item) => (
                       <li key={`${item.callsign}-${item.kind}`} className="is-motion">
-                        <strong>{item.callsign}</strong>
+                        <strong>
+                          <button className="flight-link" onClick={() => item.callsign && onSelectFlight?.(item.callsign)}>{item.callsign}</button>
+                        </strong>
                         <span>
                           {(item.kind ?? "").replace(/_/g, " ")} — {item.detail ?? ""}
                         </span>
@@ -305,7 +314,9 @@ export function OpsBoard({
                   <ul className="detection-list" data-unusual-list>
                     {rules.unusual.slice(0, 5).map((item) => (
                       <li key={`${item.callsign}-${item.kind}`} className="is-unusual">
-                        <strong>{item.callsign}</strong>
+                        <strong>
+                          <button className="flight-link" onClick={() => item.callsign && onSelectFlight?.(item.callsign)}>{item.callsign}</button>
+                        </strong>
                         <span>{item.detail}</span>
                       </li>
                     ))}
@@ -316,7 +327,9 @@ export function OpsBoard({
                   <ul className="detection-list" data-detection-overspeed>
                     {rules.overspeed.slice(0, 5).map((item) => (
                       <li key={item.icao24 ?? item.callsign} className="is-overspeed">
-                        <strong>{item.callsign}</strong>
+                        <strong>
+                          <button className="flight-link" onClick={() => item.callsign && onSelectFlight?.(item.callsign)}>{item.callsign}</button>
+                        </strong>
                         <span>
                           {item.ground_speed_kt} kt
                           {item.limit_kt ? ` (limit ${item.limit_kt})` : ""}

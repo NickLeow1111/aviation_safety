@@ -3269,18 +3269,41 @@ table.data tbody tr:hover {
 .case-picker-row:hover { background: var(--panel-soft); }
 
 
-/* ---- operations drawer on the map --------------------------------------- */
-.map-drawer {
-  position: absolute; top: 12px; right: 12px; bottom: 12px; width: 400px;
-  z-index: 5; display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--border-strong);
-  border-radius: 12px; box-shadow: 0 12px 32px rgba(15, 23, 42, .18); overflow: hidden;
+/* ---- right-hand column: Ask the traffic on top, Operations underneath --- */
+.map-side {
+  display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0;
 }
-.map-drawer-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border-bottom: 1px solid var(--border);
-  font-size: 12px; font-weight: 600; color: var(--navy);
+.map-side .map-assistant { flex: 1 1 0; min-height: 0; }
+.map-side .map-ops { flex: 1 1 0; min-height: 0; }
+.map-side .map-assistant-open { position: static; flex: 0 0 auto; align-self: flex-start; }
+.map-ops {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden;
 }
-.map-drawer-body { overflow-y: auto; min-height: 0; }
-.map-drawer-body .ops { border: 0; border-radius: 0; }
-.map-btn.is-on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.map-ops-body { overflow-y: auto; min-height: 0; }
+.map-ops-body .ops { border: 0; border-radius: 0; }
+.map-ops-open { right: 76px; }
+
+/* A callsign is a handle: click it and the aircraft appears on the map. */
+.flight-link {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--navy);
+  cursor: pointer; text-decoration: underline; text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.flight-link:hover { color: #1d4ed8; text-decoration-style: solid; }
+
+.flight-profile {
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  color: var(--navy);
+}
+.flight-profile-head {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 11px; font-weight: 600; margin-bottom: 4px;
+}
+.flight-profile svg { width: 100%; height: 62px; display: block; }
+.flight-profile .map-provenance { margin: 4px 0 0; font-size: 10px; }
+.map-flight-note {
+  margin: 8px 0 0; padding: 8px 10px; border-radius: 8px;
+  background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 12px;
+}
