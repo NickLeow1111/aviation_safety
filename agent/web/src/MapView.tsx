@@ -295,6 +295,53 @@ export function MapView({
   // The operations board pushed rule results out of the analysis tab and needed a home on
   // the screen where the rules actually run. It lives here, closed until asked for.
   const [opsOpen, setOpsOpen] = useState(true);
+  const bothOpen = assistantOpen && opsOpen;
+
+  // Panel geometry. The column width and the height split between the two panels are
+  // both dragged into place and remembered, because a reader who has made room for a
+  // long answer should not have to do it again after every navigation.
+  const [sideWidth, setSideWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('map-side-width'));
+    return Number.isFinite(saved) && saved >= 300 && saved <= 620 ? saved : 372;
+  });
+  const [askShare, setAskShare] = useState(() => {
+    const saved = Number(localStorage.getItem('map-panel-split'));
+    return Number.isFinite(saved) && saved > 0.1 && saved < 0.9 ? saved : 0.5;
+  });
+  const sideRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('map-side-width', String(Math.round(sideWidth)));
+    localStorage.setItem('map-panel-split', askShare.toFixed(3));
+  }, [sideWidth, askShare]);
+
+  const beginPanelDrag = (kind: 'width' | 'split') => (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startWidth = sideWidth;
+    const startShare = askShare;
+    const rect = sideRef.current?.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const height = rect?.height || 1;
+    const move = (moveEvent: PointerEvent) => {
+      if (kind === 'width') {
+        // Dragging left makes the column wider: the map gives up the difference.
+        setSideWidth(Math.min(620, Math.max(300, startWidth - (moveEvent.clientX - startX))));
+        return;
+      }
+      const share = startShare + (moveEvent.clientY - startY) / height;
+      setAskShare(Math.min(0.85, Math.max(0.15, share)));
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      document.body.classList.remove('is-resizing-panel');
+    };
+    document.body.classList.add('is-resizing-panel');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+  };
+
   const [flightNote, setFlightNote] = useState<string | null>(null);
 
   const [rulesSnapshot, setRulesSnapshot] = useState<RulesSnapshot | null>(null);
@@ -1008,7 +1055,7 @@ export function MapView({
     }));
 
   return (
-    <div className={`map-view ${assistantOpen ? "map-view--assistant" : ""} ${opsOpen ? "map-view--ops" : ""}`}>
+    <div className={`map-view map-view--side ${assistantOpen ? "map-view--assistant" : ""} ${opsOpen ? "map-view--ops" : ""}`}>
       <aside className="map-rail">
         <div className="map-rail-head">
           <h2>Safety events</h2>
@@ -1460,9 +1507,24 @@ export function MapView({
         )}
       </div>
 
-      <div className="map-side">
+      <div className="map-side" ref={sideRef} style={{ width: sideWidth }} data-map-side>
+        {/* Drag the left edge to trade map width for panel width; drag the rule
+            between the two panels to trade height between them. Both persist. */}
+        <div
+          className="map-side-grip"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the panel column"
+          onPointerDown={beginPanelDrag("width")}
+          data-side-grip
+        />
+
         {assistantOpen ? (
-          <aside className="map-assistant" data-map-assistant>
+          <aside
+            className="map-assistant"
+            data-map-assistant
+            style={bothOpen ? { flexGrow: askShare } : undefined}
+          >
             <div className="map-assistant-head">
               <span>Ask the traffic</span>
               <button
@@ -1483,13 +1545,34 @@ export function MapView({
             />
           </aside>
         ) : (
-          <button className="map-assistant-open" onClick={() => setAssistantOpen(true)} data-assistant-toggle>
-            Ask
+          <button
+            className="map-panel-strip"
+            onClick={() => setAssistantOpen(true)}
+            aria-expanded={false}
+            data-assistant-toggle
+          >
+            <span>Ask the traffic</span>
+            <span className="map-panel-strip-cue" aria-hidden>⌃</span>
           </button>
         )}
 
+        {bothOpen && (
+          <div
+            className="map-side-split"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize the panels"
+            onPointerDown={beginPanelDrag("split")}
+            data-side-split
+          />
+        )}
+
         {opsOpen ? (
-          <aside className="map-ops" data-ops-panel>
+          <aside
+            className="map-ops"
+            data-ops-panel
+            style={bothOpen ? { flexGrow: 1 - askShare } : undefined}
+          >
             <div className="map-assistant-head">
               <span>Operations</span>
               <button
@@ -1513,8 +1596,14 @@ export function MapView({
             </div>
           </aside>
         ) : (
-          <button className="map-assistant-open map-ops-open" onClick={() => setOpsOpen(true)} data-ops-toggle>
-            Ops
+          <button
+            className="map-panel-strip"
+            onClick={() => setOpsOpen(true)}
+            aria-expanded={false}
+            data-ops-toggle
+          >
+            <span>Operations</span>
+            <span className="map-panel-strip-cue" aria-hidden>⌃</span>
           </button>
         )}
       </div>

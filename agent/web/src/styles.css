@@ -2540,6 +2540,10 @@ table.data tbody tr:hover {
   position: absolute; right: 12px; top: 92px; width: 268px;
   background: var(--panel); border: 1px solid var(--border-strong);
   border-radius: 12px; box-shadow: var(--shadow-sm); padding: 12px 13px;
+  /* Cards are sized by the reader: long track notes and the flight profile need room,
+     and the corner grip costs nothing when you never touch it. */
+  resize: both; overflow: auto;
+  min-width: 240px; min-height: 120px; max-width: 62vw; max-height: 72vh;
 }
 .map-detail-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .map-detail-head strong { font-size: 12.5px; text-transform: capitalize; }
@@ -2820,8 +2824,11 @@ table.data tbody tr:hover {
 
 .map-view { position: relative; }
 
-.map-view--assistant {
-  grid-template-columns: 288px minmax(0, 1fr) 372px;
+.map-view--side {
+  /* The column exists whether or not its panels are open — a hidden panel collapses
+     to a strip in it — so the three-track grid applies to every map view. The track
+     follows the column's inline width instead of pinning a number here. */
+  grid-template-columns: 288px minmax(0, 1fr) auto;
 }
 
 .map-assistant {
@@ -3271,11 +3278,52 @@ table.data tbody tr:hover {
 
 /* ---- right-hand column: Ask the traffic on top, Operations underneath --- */
 .map-side {
-  display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0;
+  position: relative;
+  display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0;
 }
-.map-side .map-assistant { flex: 1 1 0; min-height: 0; }
-.map-side .map-ops { flex: 1 1 0; min-height: 0; }
-.map-side .map-assistant-open { position: static; flex: 0 0 auto; align-self: flex-start; }
+.map-side .map-assistant { flex: 1 1 0; min-height: 96px; }
+.map-side .map-ops { flex: 1 1 0; min-height: 96px; }
+
+/* Drag the column's left edge to trade map width for panel width. */
+.map-side-grip {
+  position: absolute; left: -7px; top: 0; bottom: 0; width: 14px;
+  cursor: col-resize; border-radius: 7px; z-index: 4;
+  background: transparent; transition: background 120ms ease;
+}
+.map-side-grip::after {
+  content: ""; position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 44px; border-radius: 2px; background: var(--border-strong);
+  opacity: 0.55; transition: opacity 120ms ease;
+}
+.map-side-grip:hover::after, .map-side-grip:focus-visible::after { opacity: 1; }
+
+/* Drag the rule between the two panels to trade height between them. */
+.map-side-split {
+  flex: 0 0 8px; margin: -4px 0; cursor: row-resize;
+  position: relative; border-radius: 4px;
+}
+.map-side-split::after {
+  content: ""; position: absolute; left: 30%; right: 30%; top: 50%;
+  transform: translateY(-50%); height: 2px; border-radius: 2px;
+  background: var(--border-strong); opacity: 0.5; transition: opacity 120ms ease;
+}
+.map-side-split:hover::after { opacity: 1; }
+
+/* A hidden panel is a strip in the column, not a button floating over the map:
+   it keeps its place under the panel above and says what it is. */
+.map-panel-strip {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 10px 14px; border-radius: 12px; cursor: pointer;
+  background: var(--panel); border: 1px dashed var(--border-strong);
+  font: inherit; font-size: 11px; font-weight: 650; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--muted-light); text-align: left;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.map-panel-strip:hover { background: var(--panel-2, var(--panel)); color: var(--text); border-color: var(--navy); }
+.map-panel-strip-cue { font-size: 11px; opacity: 0.7; }
+
+/* While a drag is in flight the pointer must not select text or leave a caret. */
+body.is-resizing-panel { cursor: col-resize; user-select: none; }
 .map-ops {
   display: flex; flex-direction: column; min-height: 0;
   background: var(--panel); border: 1px solid var(--border);
