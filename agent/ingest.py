@@ -78,6 +78,7 @@ class Place:
     name: str
     lat: float
     lon: float
+    elevation_ft: float | None = None
     source: str = "ourairports"
 
 
@@ -92,7 +93,8 @@ class LocationResolver:
     def __init__(self, aerodromes_path: Path = AERODROMES_JSON, airports_csv: Path = AIRPORTS_CSV) -> None:
         payload = json.loads(aerodromes_path.read_text(encoding="utf-8"))
         self._places: dict[str, Place] = {
-            code.upper(): Place(code.upper(), row["name"], float(row["lat"]), float(row["lon"]))
+            code.upper(): Place(code.upper(), row["name"], float(row["lat"]), float(row["lon"]),
+                               elevation_ft=float(row["elevation_ft"]) if row.get("elevation_ft") is not None else None)
             for code, row in payload["aerodromes"].items()
         }
         self._aliases: dict[str, dict[str, str]] = {
@@ -118,6 +120,7 @@ class LocationResolver:
                         row["name"],
                         float(row["latitude_deg"]),
                         float(row["longitude_deg"]),
+                        elevation_ft=float(row["elevation_ft"]) if row.get("elevation_ft") not in (None, "") else None,
                         source="ourairports-full",
                     )
                 except (TypeError, ValueError):

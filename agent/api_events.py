@@ -338,7 +338,13 @@ def _tally(values: Sequence[str]) -> dict[str, int]:
 
 
 def _serialise(row: dict[str, Any]) -> dict[str, Any]:
-    """JSON-safe copy — datetimes become ISO strings, everything else passes through."""
+    """JSON-safe copy, including a clearly labelled airport-elevation AGL proxy.
+
+    The event stores one recorded altitude (MSL) and a place reference. For mapped
+    airport events we can subtract the reference aerodrome elevation; this is not a
+    terrain-aware AGL measurement, so the UI says ``airport_agl`` rather than implying
+    certified terrain clearance.
+    """
     out: dict[str, Any] = {}
     for key, value in row.items():
         if isinstance(value, datetime):
@@ -347,4 +353,11 @@ def _serialise(row: dict[str, Any]) -> dict[str, Any]:
             out[key] = float(value)
         else:
             out[key] = value
+    altitude = out.get("altitude_ft")
+    place = resolver()._places.get(str(out.get("place_icao") or "").upper())  # noqa: SLF001
+    if isinstance(altitude, (int, float)) and place and place.elevation_ft is not None:
+        out["altitude_agl_ft"] = round(float(altitude) - place.elevation_ft)
+    else:
+        out["altitude_agl_ft"] = None
+    out["altitude_agl_basis"] = "airport_elevation_proxy" if out["altitude_agl_ft"] is not None else None
     return out

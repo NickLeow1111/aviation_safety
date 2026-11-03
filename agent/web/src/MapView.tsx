@@ -58,6 +58,9 @@ type EventRow = {
   provenance: string;
   /** Producer metadata. Derived events carry the arithmetic; `engine` marks OpenARIA. */
   metrics?: Record<string, unknown> | null;
+  /** Recorded altitude minus the referenced airport elevation; null when unavailable. */
+  altitude_agl_ft?: number | null;
+  altitude_agl_basis?: string | null;
 };
 
 type Encounter = {
@@ -216,9 +219,10 @@ type Filters = {
   severities: string[];
   source: string | null;
   days: number | null;
+  altitudeBand: "all" | "below_1000" | "above_1000";
 };
 
-const EMPTY_FILTERS: Filters = { types: [], severities: [], source: null, days: null };
+const EMPTY_FILTERS: Filters = { types: [], severities: [], source: null, days: null, altitudeBand: "all" };
 
 const DAY_PRESETS: { label: string; days: number | null }[] = [
   { label: "All time", days: null },
@@ -242,6 +246,11 @@ function numberOf(row: EventRow, key: string): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function matchesAltitudeBand(row: EventRow, band: Filters["altitudeBand"]): boolean {
+  if (band === "all") return true;
+  if (row.altitude_agl_ft == null) return false;
+  return band === "below_1000" ? row.altitude_agl_ft < 1000 : row.altitude_agl_ft >= 1000;
+}
 function when(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -597,7 +606,7 @@ export function MapView({
       const response = await fetch(`/api/events?${params.toString()}`);
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail ?? `HTTP ${response.status}`);
-      setEvents(body.events ?? []);
+      setEvents((body.events ?? []).filter((row: EventRow) => matchesAltitudeBand(row, filters.altitudeBand)));
       setCounts(body.counts ?? {});
       setSeverityCounts(body.severities ?? {});
       setSummary(body.summary ?? "");
@@ -1262,6 +1271,27 @@ export function MapView({
         </section>
 
         <section className="map-block">
+          <h3>Altitude AGL <span className="map-help">airport-elevation proxy</span></h3>
+          <div className="map-chips">
+            {([
+              ["all", "All altitudes"],
+              ["below_1000", "Below 1,000 ft"],
+              ["above_1000", "Above 1,000 ft"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                data-altitude-chip={value}
+                className={`map-chip ${filters.altitudeBand === value ? "is-on" : ""}`}
+                onClick={() => setFilters((current) => ({ ...current, altitudeBand: value }))}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="map-filter-note">Uses recorded event altitude minus the referenced airport elevation; terrain-aware AGL is unavailable for these rows.</p>
+        </section>
+
+        <section className="map-block">
           <h3>Source</h3>
           <div className="map-chips">
             {[null, "report", "upload", "derived", "aria"].map((value) => (
@@ -1277,7 +1307,7 @@ export function MapView({
           </div>
         </section>
 
-        {(filters.types.length || filters.severities.length || filters.source || filters.days) && (
+        {(filters.types.length || filters.severities.length || filters.source || filters.days || filters.altitudeBand !== "all") && (
           <button className="map-btn map-btn--ghost" onClick={() => setFilters(EMPTY_FILTERS)}>
             Clear filters
           </button>

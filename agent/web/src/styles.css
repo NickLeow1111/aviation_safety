@@ -2505,6 +2505,8 @@ table.data tbody tr:hover {
 .map-chip:hover { background: var(--navy-mist); }
 .map-chip.is-on { background: var(--navy); color: #fff; border-color: var(--navy); }
 .map-chip-count { font-size: 10px; opacity: 0.65; }
+.map-help { font-size: 9px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.map-filter-note { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .map-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; vertical-align: middle; }
 .map-chip.is-on .map-dot { outline: 1px solid rgba(255, 255, 255, 0.6); }
 .map-error { margin: 0; font-size: 11.5px; color: var(--error); }
