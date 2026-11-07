@@ -28,3 +28,6 @@ agent/web/dist/
 # ---- local data -----------------------------------------------------------
 # Full reference datasets are fetched on demand, not committed.
 data/*.csv
+
+# generated 3D aerodrome artifacts (regenerate with agent/infra/render_aerodrome.sh)
+render_out/
