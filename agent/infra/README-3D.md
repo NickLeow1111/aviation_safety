@@ -56,14 +56,30 @@ local metres around the layout centroid) or already-local metres.
   centred on the scene clips runways that sit off the diagonal.
 - **Centreline dashes** are 30 m stripe / 20 m gap along the runway axis.
 
+## Scene dressing and legibility knobs
+
+- **Vegetation**: `scatter_vegetation()` plants 260 deterministic trees outside every
+  pavement footprint (fixed seed, so reruns match). The fence ring is excluded from
+  the exclusion masks — its bounding box covers the whole site and would block all
+  planting (first attempt: 0 trees).
+- **Lighting masts**: `place_lighting_masts()` puts poles along the two longest
+  runways/taxiways.
+- **Markings widen with the model**: `MARK_SCALE = max(1, scene_size / 1000)` plus
+  `marking_width()` keep paint lines above one pixel — at a 9 km frame, true-width
+  paint is sub-pixel and vanishes.
+- **Camera framing excludes the perimeter fence** — including it zoomed the airport
+  down to ~7 px per 60 m runway.
+- **Never rotate a box whose vertices are already in world coordinates** — that is
+  what produced 6 km stray lines across the render; build walls as world-space quads.
+
 ## Honest limitations
 
-1. **No runway designators, thresholds or touchdown-zone markings yet** — only
-   centreline dashes. STEP 4A is ~30 % implemented.
-2. **Buildings are extrusions of footprints** — no roofs, doors, windows, canopies.
+1. **No runway designators (painted numbers) and no touchdown-zone markings** —
+   centreline dashes, edge lines and threshold bars exist; the rest of STEP 4A does not.
+2. **No textures** — flat colours only; buildings are extrusions with no windows,
+   doors or roofs despite STEP 4D.
 3. **Taxiway curbs, holding positions and stand lead-in lines are absent.**
 4. **Geometry is only as good as the extraction**; nothing here re-derives scale.
 5. **No DXF/DWG input** — that needs the ODA File Converter (EULA, not installed).
-6. **Precision framing:** the camera fits the model's geometry, so a very wide fence
-   line will zoom the airport out. Pass a layout without a perimeter if you want a
-   tighter hero shot.
+6. **Vegetation is dots at wide framing** — 260 trees read as specks when the camera
+   covers 9 km; raise the count in `scatter_vegetation(count=...)` for hero shots.
